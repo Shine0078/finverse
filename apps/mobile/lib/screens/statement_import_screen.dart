@@ -371,6 +371,7 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
       'subscriptions',
       'healthcare',
       'entertainment',
+      'other_expenses',
       'loan_payment',
       'transfer',
       'fees',
@@ -667,7 +668,7 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
               const Text(
-                  'Upload a statement, review every uncertain row, then approve it into your transactions.'),
+                  'Upload a statement and FINVERSE will categorize each transaction automatically. You can approve immediately or adjust any row first.'),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                   initialValue: _accountId,
@@ -751,7 +752,7 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
                           style: TextStyle(
                               color: Theme.of(context).colorScheme.error))),
                 Text(
-                    '${detail.statement.rowsTotal} rows · ${detail.statement.rowsNeedsReview} need review',
+                    '${detail.statement.rowsTotal} transactions ready · automatic categorization complete',
                     style: Theme.of(context).textTheme.bodySmall),
                 if (detail.statement.status == 'ready' && detail.rows.isEmpty)
                   Card(
@@ -818,14 +819,13 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
                 FilledButton.icon(
                     onPressed: _working ||
                             detail.rows.isEmpty ||
-                            detail.statement.rowsNeedsReview > 0 ||
                             detail.statement.status != 'ready'
                         ? null
                         : _approve,
                     icon: const Icon(Icons.check),
                     label: Text(detail.statement.status == 'approved'
                         ? 'Approved'
-                        : 'Approve transactions')),
+                        : 'Approve transactions now')),
                 if (detail.statement.status == 'approved' &&
                     detail.statement.sourceDeletedAt == null) ...[
                   Padding(
@@ -854,7 +854,26 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
 
   Widget _rowTile(StatementRow row) {
     final theme = Theme.of(context);
-    final flagged = row.decision == 'needs_review';
+    final incomplete = row.postedAt == null || row.amount == null;
+    final category = row.categorySlug == 'unknown'
+        ? 'Will be categorized on approval'
+        : row.categorySlug.replaceAll('_', ' ');
+    final categoryOrigin = switch (row.categorySource) {
+      'user_manual' => 'chosen by you',
+      'user_rule' => 'matched your rule',
+      'model' => 'auto-categorized',
+      'lexicon' => 'recognized automatically',
+      'transfer_pairing' => 'matched transfer',
+      _ => 'auto-categorizes on approval',
+    };
+    final notes = <String>[
+      if (row.flags.contains('possible_duplicate'))
+        'Possible duplicate — FINVERSE will skip it if it already exists',
+      if (row.flags.contains('ambiguous_date'))
+        'Date interpreted from the statement format',
+      if (row.flags.contains('recurring_payment')) 'Recurring pattern detected',
+      if (incomplete) 'Incomplete row — it will be skipped without blocking approval',
+    ];
     return Card(
       margin: const EdgeInsets.only(top: 8),
       child: ListTile(
@@ -868,8 +887,9 @@ class _StatementImportScreenState extends State<StatementImportScreen> {
         title:
             Text(row.description, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text(
-            '${row.postedAt ?? 'Date unclear'} · ${row.amount ?? 'Amount unclear'} ${row.currency} · ${row.direction}\n${row.merchant == null || row.merchant!.isEmpty ? row.description : row.merchant}\n${row.categorySlug} · ${(row.categoryConfidence * 100).round()}% confidence${row.flags.isEmpty ? '' : '\n${row.flags.join(', ')}'}',
-            style: TextStyle(color: flagged ? theme.colorScheme.error : null)),
+            '${row.postedAt ?? 'Date unavailable'} · ${row.amount ?? 'Amount unavailable'} ${row.currency} · ${row.direction}\n${row.merchant == null || row.merchant!.isEmpty ? row.description : row.merchant}\n$category · $categoryOrigin${row.categorySlug == 'unknown' ? '' : ' · ${(row.categoryConfidence * 100).round()}% confidence'}${notes.isEmpty ? '' : '\n${notes.join(' · ')}'}',
+            style: TextStyle(
+                color: incomplete ? theme.colorScheme.error : null)),
         isThreeLine: true,
         trailing: PopupMenuButton<String>(
             onSelected: (value) {

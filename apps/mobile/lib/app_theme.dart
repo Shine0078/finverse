@@ -20,7 +20,7 @@ abstract final class FinThemeColors {
         ocean => const Color(0xFF0369A1),
         plum => const Color(0xFF9333EA),
         amber => const Color(0xFFD97706),
-        _ => const Color(0xFF0E7C66),
+        _ => const Color(0xFF0E7490),
       };
 
   static bool isPreset(String id) => presets.contains(id);

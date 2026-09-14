@@ -57,7 +57,9 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen>
     with WidgetsBindingObserver {
   bool _loading = true;
+  bool _refreshing = false;
   String? _error;
+  String? _refreshError;
   DateTime? _lastResumeRefresh;
 
   List<Account> _accounts = const [];
@@ -144,9 +146,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _load({bool sync = false}) async {
     widget.api.resetOfflineStatus();
     if (!mounted) return;
+    final initialLoad = _insights == null && _accounts.isEmpty;
     setState(() {
-      _loading = true;
+      _loading = initialLoad;
+      _refreshing = !initialLoad;
       _error = null;
+      _refreshError = null;
     });
 
     try {
@@ -183,6 +188,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         _insights = results[4] as InsightsReport;
         _netWorthHistory = results[5] as List<NetWorthSnapshot>;
         _loading = false;
+        _refreshing = false;
       });
       // Statement summaries are supplementary to the dashboard's primary
       // reads. Keep them best-effort so a temporary import-service outage
@@ -191,8 +197,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _error = friendlyErrorMessage(error);
+        if (initialLoad) {
+          _error = friendlyErrorMessage(error);
+        } else {
+          _refreshError = friendlyErrorMessage(error);
+        }
         _loading = false;
+        _refreshing = false;
       });
     }
   }
@@ -417,85 +428,174 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  void _handleHeaderAction(String value) {
+    Widget? destination;
+    switch (value) {
+      case 'planning':
+        destination = PlanningScreen(api: widget.api);
+        break;
+      case 'calendar':
+        destination = FinancialCalendarScreen(api: widget.api);
+        break;
+      case 'analytics':
+        destination = AnalyticsScreen(api: widget.api);
+        break;
+      case 'assistant':
+        destination = AssistantScreen(api: widget.api);
+        break;
+      case 'subscriptions':
+        destination = SubscriptionsScreen(api: widget.api);
+        break;
+      case 'notifications':
+        destination = NotificationsScreen(api: widget.api);
+        break;
+      case 'settings':
+        destination = SettingsScreen(
+          api: widget.api,
+          appLockController: widget.appLockController,
+          onVerifyEmail: _verifyEmail,
+          onSignOut: _confirmSignOut,
+          onDeleteAccount: _confirmAccountDeletion,
+          onSignedOutEverywhere: () async {
+            if (mounted) Navigator.of(context).pop();
+            await widget.onSignOut?.call();
+          },
+        );
+        break;
+      case 'sign-out':
+        _confirmSignOut();
+        return;
+      case 'verify-email':
+        _verifyEmail();
+        return;
+      case 'delete-account':
+        _confirmAccountDeletion();
+        return;
+    }
+    if (destination != null) {
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => destination!));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final compactHeader = MediaQuery.sizeOf(context).width < 720;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('FINVERSE'),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('FINVERSE'),
+            Text(
+              'Financial overview',
+              style: TextStyle(
+                color: Color(0xFFCED9E5),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
         actions: [
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.show_chart),
+              tooltip: l10n.profileCashFlowPlanningTitle,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PlanningScreen(api: widget.api),
+              )),
+            ),
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.calendar_month_outlined),
+              tooltip: l10n.profileFinancialCalendarTitle,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => FinancialCalendarScreen(api: widget.api),
+              )),
+            ),
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.insights_outlined),
+              tooltip: l10n.navAnalytics,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => AnalyticsScreen(api: widget.api),
+              )),
+            ),
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.auto_awesome_outlined),
+              tooltip: l10n.assistantTitle,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => AssistantScreen(api: widget.api),
+              )),
+            ),
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.subscriptions_outlined),
+              tooltip: l10n.profileSubscriptionsTitle,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => SubscriptionsScreen(api: widget.api),
+              )),
+            ),
+          if (!compactHeader)
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: l10n.notificationsTitle,
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => NotificationsScreen(api: widget.api),
+              )),
+            ),
           IconButton(
-            icon: const Icon(Icons.show_chart),
-            tooltip: l10n.profileCashFlowPlanningTitle,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => PlanningScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.calendar_month_outlined),
-            tooltip: l10n.profileFinancialCalendarTitle,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => FinancialCalendarScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.insights_outlined),
-            tooltip: l10n.navAnalytics,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AnalyticsScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.auto_awesome_outlined),
-            tooltip: l10n.assistantTitle,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => AssistantScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.subscriptions_outlined),
-            tooltip: l10n.profileSubscriptionsTitle,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => SubscriptionsScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: l10n.notificationsTitle,
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => NotificationsScreen(api: widget.api),
-            )),
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync),
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.sync),
             tooltip: l10n.dashboardSyncTooltip,
-            onPressed: _loading ? null : () => _load(sync: true),
+            onPressed: _loading || _refreshing ? null : () => _load(sync: true),
           ),
-          if (widget.onSignOut != null)
+          if (compactHeader)
+            PopupMenuButton<String>(
+              tooltip: 'Dashboard menu',
+              onSelected: _handleHeaderAction,
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                    value: 'planning', child: Text('Cash-flow planning')),
+                const PopupMenuItem(
+                    value: 'calendar', child: Text('Financial calendar')),
+                PopupMenuItem(
+                    value: 'analytics', child: Text(l10n.navAnalytics)),
+                PopupMenuItem(
+                    value: 'assistant', child: Text(l10n.assistantTitle)),
+                PopupMenuItem(
+                    value: 'subscriptions',
+                    child: Text(l10n.profileSubscriptionsTitle)),
+                PopupMenuItem(
+                    value: 'notifications',
+                    child: Text(l10n.notificationsTitle)),
+                if (widget.onSignOut != null) ...[
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                      value: 'settings',
+                      child: Text(l10n.profileSettingsPrivacyTitle)),
+                  PopupMenuItem(
+                      value: 'sign-out', child: Text(l10n.commonSignOut)),
+                ],
+              ],
+            )
+          else if (widget.onSignOut != null)
             PopupMenuButton<String>(
               tooltip: l10n.dashboardAccountMenuTooltip,
-              onSelected: (value) {
-                if (value == 'settings') {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => SettingsScreen(
-                      api: widget.api,
-                      appLockController: widget.appLockController,
-                      onVerifyEmail: _verifyEmail,
-                      onSignOut: _confirmSignOut,
-                      onDeleteAccount: _confirmAccountDeletion,
-                      onSignedOutEverywhere: () async {
-                        if (mounted) Navigator.of(context).pop();
-                        await widget.onSignOut?.call();
-                      },
-                    ),
-                  ));
-                }
-                if (value == 'sign-out') _confirmSignOut();
-                if (value == 'verify-email') _verifyEmail();
-                if (value == 'delete-account') _confirmAccountDeletion();
-              },
+              onSelected: _handleHeaderAction,
               itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'settings',
@@ -580,63 +680,68 @@ class _DashboardScreenState extends State<DashboardScreen>
         ? _dataQualityCard(theme, _dataQuality!)
         : null;
     final sections = _sections(theme, l10n);
+    final summary = _visible(DashboardCard.monthlySummary) && _insights != null
+        ? _insightsSection(theme, l10n)
+        : null;
 
     return RefreshIndicator(
       onRefresh: () => _load(sync: true),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Phones stay a single column; tablets and landscape split the
-          // sections into two, so more of the month is visible without
-          // scrolling past a wall of cards.
-          final wide = constraints.maxWidth >= 900;
-          if (!wide) {
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                hero,
-                const SizedBox(height: 20),
-                quickActions,
-                const SizedBox(height: 20),
-                if (dataQuality != null) ...[
-                  dataQuality,
-                  const SizedBox(height: 20),
-                ],
-                ..._spaced(sections),
-              ],
-            );
-          }
-
+          final wide = constraints.maxWidth >= 980;
           final left = <Widget>[];
           final right = <Widget>[];
-          for (var i = 0; i < sections.length; i++) {
-            (i.isEven ? left : right).add(sections[i]);
+          if (wide) {
+            for (var i = 0; i < sections.length; i++) {
+              (i.isEven ? left : right).add(sections[i]);
+            }
           }
-
           return ListView(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              constraints.maxWidth >= 720 ? 24 : 16,
+              16,
+              constraints.maxWidth >= 720 ? 24 : 16,
+              36,
+            ),
             children: [
               Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1080),
+                  constraints: const BoxConstraints(maxWidth: 1240),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_refreshing) ...[
+                        const FinSyncingChip(),
+                        const SizedBox(height: 12),
+                      ],
+                      if (_refreshError != null) ...[
+                        _refreshFailureCard(),
+                        const SizedBox(height: 16),
+                      ],
                       hero,
                       const SizedBox(height: 20),
+                      if (summary != null) ...[
+                        summary,
+                        const SizedBox(height: 20),
+                      ],
                       quickActions,
                       const SizedBox(height: 20),
                       if (dataQuality != null) ...[
                         dataQuality,
                         const SizedBox(height: 20),
                       ],
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: Column(children: _spaced(left))),
-                          const SizedBox(width: 16),
-                          Expanded(child: Column(children: _spaced(right))),
-                        ],
-                      ),
+                      if (wide)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: Column(children: _spaced(left))),
+                            const SizedBox(width: 20),
+                            Expanded(child: Column(children: _spaced(right))),
+                          ],
+                        )
+                      else
+                        ..._spaced(sections),
                     ],
                   ),
                 ),
@@ -656,8 +761,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           _latestImportedStatementSection(theme),
         if (_visible(DashboardCard.netWorth) && _netWorthHistory.isNotEmpty)
           NetWorthHistoryChart(points: _netWorthHistory),
-        if (_visible(DashboardCard.monthlySummary) && _insights != null)
-          _insightsSection(theme, l10n),
         if (_visible(DashboardCard.spending) &&
             _insights != null &&
             _insights!.topCategories.isNotEmpty)
@@ -746,66 +849,84 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _insightsSection(ThemeData theme, AppLocalizations l10n) {
     final insights = _insights!;
+    final comparison = insights.comparison;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionLabel(theme, l10n.analyticsThisMonth),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final tileWidth = (constraints.maxWidth - 12) / 2;
-                return Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    SizedBox(
-                      width: tileWidth,
-                      child: FinSummaryTile(
-                        label: l10n.analyticsIncome,
-                        value: insights.income,
-                        icon: Icons.south_west,
-                        accent: context.finColors.income,
-                      ),
-                    ),
-                    SizedBox(
-                      width: tileWidth,
-                      child: FinSummaryTile(
-                        label: l10n.analyticsNetExpenses,
-                        value: insights.expenses,
-                        icon: Icons.north_east,
-                        accent: context.finColors.expense,
-                      ),
-                    ),
-                    SizedBox(
-                      width: tileWidth,
-                      child: FinSummaryTile(
-                        label: l10n.dashboardNetCashFlow,
-                        value: insights.netCashFlow,
-                        icon: Icons.swap_vert,
-                        accent: context.finColors.positiveTrend,
-                      ),
-                    ),
-                    SizedBox(
-                      width: tileWidth,
-                      child: FinSummaryTile(
-                        label: l10n.analyticsSavingsRate,
-                        value: insights.savingsRate,
-                        icon: Icons.savings_outlined,
-                        accent: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ],
-                );
-              },
+        if (comparison?.hasAny == true) ...[
+          Text(
+            l10n.dashboardComparedWithPeriod,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-        ),
-        if (insights.comparison?.hasAny == true) ...[
           const SizedBox(height: 8),
-          _comparisonCard(theme, insights.comparison!),
         ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 1040
+                ? 4
+                : constraints.maxWidth >= 560
+                    ? 2
+                    : 1;
+            const gap = 12.0;
+            final tileWidth =
+                (constraints.maxWidth - gap * (columns - 1)) / columns;
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children: [
+                SizedBox(
+                  width: tileWidth,
+                  height: 128,
+                  child: FinSummaryTile(
+                    label: l10n.analyticsIncome,
+                    value: insights.income,
+                    supporting: comparison?.income,
+                    icon: Icons.south_west,
+                    accent: context.finColors.income,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  height: 128,
+                  child: FinSummaryTile(
+                    label: l10n.analyticsNetExpenses,
+                    value: insights.expenses,
+                    supporting: comparison?.expenses,
+                    icon: Icons.north_east,
+                    accent: context.finColors.expense,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  height: 128,
+                  child: FinSummaryTile(
+                    label: l10n.dashboardNetCashFlow,
+                    value: insights.netCashFlow,
+                    supporting: comparison?.netCashFlow,
+                    icon: Icons.swap_vert,
+                    accent: insights.netCashFlow.trimLeft().startsWith('-')
+                        ? context.finColors.expense
+                        : context.finColors.positiveTrend,
+                  ),
+                ),
+                SizedBox(
+                  width: tileWidth,
+                  height: 128,
+                  child: FinSummaryTile(
+                    label: l10n.analyticsSavingsRate,
+                    value: insights.savingsRate,
+                    supporting: comparison?.savingsRate,
+                    icon: Icons.savings_outlined,
+                    accent: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ],
     );
   }
@@ -857,27 +978,41 @@ class _DashboardScreenState extends State<DashboardScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionLabel(theme, l10n.dashboardRecentTransactions),
-          ..._transactions.map(
-            (txn) => TransactionTile(
-              transaction: txn,
-              onTap: () async {
-                await Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => TransactionDetailScreen(
-                    api: widget.api,
-                    transaction: txn,
-                  ),
-                ));
-                await _load();
-              },
-              onRecategorize: (slug) async {
-                final message = await widget.api.recategorize(txn.id, slug);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text(message)));
-                await _load();
-              },
+          if (_transactions.isEmpty)
+            Card(
+              child: FinEmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'No transactions yet',
+                message:
+                    'Connect an account or import a statement to see activity here.',
+                actionLabel: 'Import a statement',
+                onAction: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => StatementImportScreen(api: widget.api),
+                )),
+              ),
+            )
+          else
+            ..._transactions.map(
+              (txn) => TransactionTile(
+                transaction: txn,
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => TransactionDetailScreen(
+                      api: widget.api,
+                      transaction: txn,
+                    ),
+                  ));
+                  await _load();
+                },
+                onRecategorize: (slug) async {
+                  final message = await widget.api.recategorize(txn.id, slug);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(message)));
+                  await _load();
+                },
+              ),
             ),
-          ),
         ],
       );
 
@@ -892,36 +1027,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       );
 
-  Widget _comparisonCard(ThemeData theme, InsightsComparison comparison) =>
-      Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(AppLocalizations.of(context).dashboardComparedWithPeriod,
-                  style: theme.textTheme.titleSmall),
-              const SizedBox(height: 6),
-              for (final entry in [
-                ('Income', comparison.income),
-                ('Expenses', comparison.expenses),
-                ('Net cash flow', comparison.netCashFlow),
-                ('Savings rate', comparison.savingsRate),
-              ])
-                if (entry.$2 != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(entry.$1),
-                        Flexible(
-                          child: Text(entry.$2!, textAlign: TextAlign.end),
-                        ),
-                      ],
-                    ),
-                  ),
-            ],
+  Widget _refreshFailureCard() => Card(
+        color: context.finColors.warningContainer,
+        child: ListTile(
+          leading: Icon(
+            Icons.sync_problem,
+            color: context.finColors.onWarningContainer,
+          ),
+          title: Text(
+            'Latest refresh did not finish',
+            style: TextStyle(color: context.finColors.onWarningContainer),
+          ),
+          subtitle: Text(
+            'Your previously loaded balances are still shown.',
+            style: TextStyle(color: context.finColors.onWarningContainer),
+          ),
+          trailing: TextButton(
+            onPressed: _refreshing ? null : () => _load(sync: true),
+            child: const Text('Try again'),
           ),
         ),
       );

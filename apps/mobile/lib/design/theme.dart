@@ -12,11 +12,13 @@ import 'tokens.dart';
 import 'typography.dart';
 
 abstract final class FinTheme {
-  /// The brand seed. Emerald-teal reads as money itself — the register of a
-  /// savings app rather than an institution's back office — while the lighter
-  /// greens and the red stay reserved for money moving, so they still mean
-  /// something when they appear.
-  static const Color seed = Color(0xFF0E7C66);
+  /// Interactive cyan-blue is kept separate from financial green and red.
+  /// Deep navy carries the persistent app chrome; white and cool grey keep the
+  /// working surface quiet and easy to scan.
+  static const Color seed = Color(0xFF0E7490);
+  static const Color navy = Color(0xFF0B1F33);
+  static const Color slate = Color(0xFF102A43);
+  static const Color canvas = Color(0xFFF3F6FA);
 
   static ThemeData light([Color? brandSeed]) => _build(brandSeed);
 
@@ -25,30 +27,51 @@ abstract final class FinTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: selectedSeed,
       brightness: Brightness.light,
-    ).copyWith(surface: Colors.white);
-    final heroBase = scheme.primary;
-    final heroEnd = Color.lerp(heroBase, Colors.black, 0.2)!;
+    ).copyWith(
+      primary: selectedSeed,
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFFCFFAFE),
+      onPrimaryContainer: const Color(0xFF083344),
+      secondary: const Color(0xFF0F766E),
+      onSecondary: Colors.white,
+      surface: Colors.white,
+      surfaceContainerLowest: Colors.white,
+      surfaceContainerLow: const Color(0xFFF8FAFC),
+      surfaceContainer: const Color(0xFFF1F5F9),
+      surfaceContainerHigh: const Color(0xFFE8EEF5),
+      surfaceContainerHighest: const Color(0xFFDDE6EF),
+      outline: const Color(0xFF64748B),
+      outlineVariant: const Color(0xFFCBD5E1),
+      error: const Color(0xFFC2413B),
+      errorContainer: const Color(0xFFFFE4E1),
+      onErrorContainer: const Color(0xFF7F1D1D),
+    );
     final themedFin = FinColors.light.copyWith(
-      heroGradientStart: heroBase,
-      heroGradientEnd: heroEnd,
-      onHero: scheme.onPrimary,
-      onHeroMuted: scheme.onPrimary.withValues(alpha: 0.78),
+      heroGradientStart: slate,
+      heroGradientEnd: navy,
+      onHero: Colors.white,
+      onHeroMuted: const Color(0xFFCED9E5),
     );
     final base = ThemeData(colorScheme: scheme, useMaterial3: true);
 
     return base.copyWith(
       extensions: [themedFin],
       textTheme: FinType.textTheme(base.textTheme),
-      scaffoldBackgroundColor: Colors.white,
+      scaffoldBackgroundColor: canvas,
 
       appBarTheme: AppBarTheme(
         centerTitle: false,
-        scrolledUnderElevation: 0.5,
-        backgroundColor: Colors.white,
-        surfaceTintColor: scheme.surfaceTint,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: navy,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.white),
+        actionsIconTheme: const IconThemeData(color: Colors.white),
         titleTextStyle: base.textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: scheme.onSurface,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+          color: Colors.white,
         ),
       ),
 
@@ -56,10 +79,11 @@ abstract final class FinTheme {
       // financial cards read as clutter; a hairline border separates content
       // without adding visual weight to every row.
       cardTheme: CardThemeData(
-        elevation: 0,
+        elevation: 1.5,
+        shadowColor: navy.withValues(alpha: 0.10),
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        color: scheme.surfaceContainerLow,
+        color: Colors.white,
         shape: RoundedRectangleBorder(
           borderRadius: FinRadius.cardBorder,
           side: BorderSide(color: scheme.outlineVariant.withValues(alpha: 0.6)),
@@ -144,7 +168,7 @@ abstract final class FinTheme {
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
         elevation: 0,
-        backgroundColor: scheme.surfaceContainerLow,
+        backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
         indicatorShape:
             const RoundedRectangleBorder(borderRadius: FinRadius.pillBorder),
@@ -156,6 +180,23 @@ abstract final class FinTheme {
                 ? FontWeight.w700
                 : FontWeight.w500,
           ),
+        ),
+      ),
+
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: navy,
+        indicatorColor: const Color(0xFF155E75),
+        selectedIconTheme: const IconThemeData(color: Colors.white),
+        unselectedIconTheme: const IconThemeData(color: Color(0xFFAFC0D1)),
+        selectedLabelTextStyle: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+        unselectedLabelTextStyle: const TextStyle(
+          color: Color(0xFFCED9E5),
+          fontWeight: FontWeight.w500,
+          fontSize: 13,
         ),
       ),
 

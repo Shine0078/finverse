@@ -73,6 +73,49 @@ describe('manual statement imports', () => {
     expect(response.body.rows.every((row: { flags: string[]; decision: string }) => row.flags.includes('recurring_payment') && row.decision === 'include')).toBe(true);
   });
 
+  it('auto-categorizes vending transactions and approves immediately', async () => {
+    const signedIn = await user();
+    const vendingCsv = [
+      'Date,Description,Amount',
+      '2026-06-11,CAD SODA SNACK VENDI TORONTO CAN,-2.25',
+      '2026-08-11,CAD SODA SNACK VENDI TORONTO CAN,-2.25',
+    ].join('\n');
+    const response = await request(http)
+      .post('/api/imports/statements')
+      .set('Authorization', `Bearer ${signedIn.token}`)
+      .send({ accountId: signedIn.accountId, filename: 'vending.csv', mimeType: 'text/csv', contentBase64: Buffer.from(vendingCsv).toString('base64') })
+      .expect(201);
+
+    expect(response.body.statement.rowsNeedsReview).toBe(0);
+    expect(response.body.rows.every((row: { categorySlug: string; decision: string }) =>
+      row.categorySlug === 'fast_food' && row.decision === 'include')).toBe(true);
+
+    await request(http)
+      .post(`/api/imports/statements/${response.body.statement.id}/approve`)
+      .set('Authorization', `Bearer ${signedIn.token}`)
+      .expect(201);
+  });
+
+  it('uses a safe expense fallback instead of blocking an unfamiliar merchant', async () => {
+    const signedIn = await user();
+    const unfamiliarCsv = 'Date,Description,Amount\n2026-06-11,HARBOUR LANE BOOKSHOP,-22.50';
+    const response = await request(http)
+      .post('/api/imports/statements')
+      .set('Authorization', `Bearer ${signedIn.token}`)
+      .send({ accountId: signedIn.accountId, filename: 'unfamiliar.csv', mimeType: 'text/csv', contentBase64: Buffer.from(unfamiliarCsv).toString('base64') })
+      .expect(201);
+
+    expect(response.body.rows[0]).toMatchObject({
+      categorySlug: 'other_expenses',
+      categorySource: 'model',
+      decision: 'include',
+    });
+    await request(http)
+      .post(`/api/imports/statements/${response.body.statement.id}/approve`)
+      .set('Authorization', `Bearer ${signedIn.token}`)
+      .expect(201);
+  });
+
   it('changes a selected set of rows in one audited bulk decision', async () => {
     const signedIn = await user();
     const response = await request(http)
@@ -130,7 +173,8 @@ describe('manual statement imports', () => {
     for (const row of reimported.body.rows as Array<{ id: string }>) {
       await request(http).patch(`/api/imports/statements/${reimported.body.statement.id}/rows/${row.id}`).set('Authorization', `Bearer ${signedIn.token}`).send({ categorySlug: 'unknown', decision: 'include' }).expect(200);
     }
-    await request(http).post(`/api/imports/statements/${reimported.body.statement.id}/approve`).set('Authorization', `Bearer ${signedIn.token}`).expect(409);
+    const duplicateApproval = await request(http).post(`/api/imports/statements/${reimported.body.statement.id}/approve`).set('Authorization', `Bearer ${signedIn.token}`).expect(201);
+    expect(duplicateApproval.body.status).toBe('approved');
     const audit = await request(http).get(`/api/imports/statements/${id}/audit`).set('Authorization', `Bearer ${signedIn.token}`).expect(200);
     expect(audit.body.some((event: { kind: string }) => event.kind === 'approved')).toBe(true);
   });

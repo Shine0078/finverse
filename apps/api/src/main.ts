@@ -19,12 +19,17 @@ import { assertRestrictedRuntimeRole, parseAppRole, provisionAppRole } from './i
 import { closePool, getAppPool, getPool } from './infra/postgres/pool';
 import { runMigrations } from './infra/postgres/migrate';
 import { reportCrash } from './infra/observability/crash-reporter';
+import {
+  DEVELOPMENT_QA_EMAIL,
+  ensureDevelopmentQaAccount,
+} from './seed/development-qa';
 
 const config = loadConfig();
 const PORT = config.port;
 
 async function bootstrap(): Promise<void> {
   const logger = new Logger('bootstrap');
+  const developmentDashboard = shouldServeDevelopmentDashboard(config);
 
   // Migrations run before the app starts so that no request can ever hit a
   // half-migrated schema. In production this belongs in the deploy pipeline —
@@ -71,6 +76,13 @@ async function bootstrap(): Promise<void> {
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
+  const qaUserId = await ensureDevelopmentQaAccount(
+    app,
+    config,
+    developmentDashboard,
+  );
+  if (qaUserId) logger.log(`Local QA account ready: ${DEVELOPMENT_QA_EMAIL}`);
+
   // Development may allow all origins; production configuration fails closed
   // unless CORS_ORIGINS contains an explicit allowlist.
   app.enableCors({ origin: config.corsOrigins, credentials: true });
@@ -89,7 +101,6 @@ async function bootstrap(): Promise<void> {
   // adapter. It fabricates a sample ledger from the mock aggregator, so a
   // persistent deployment must never expose it just because NODE_ENV was
   // omitted or mistyped.
-  const developmentDashboard = shouldServeDevelopmentDashboard(config);
   if (developmentDashboard) {
     app.useStaticAssets(join(__dirname, '..', 'public'), { prefix: '/dev' });
   }

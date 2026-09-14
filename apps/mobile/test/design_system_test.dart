@@ -213,7 +213,7 @@ void main() {
   });
 
   group('theme', () {
-    testWidgets('supplies the financial palette on the white theme',
+    testWidgets('supplies the financial palette on the cool canvas theme',
         (tester) async {
       late FinColors fin;
       late ThemeData theme;
@@ -227,7 +227,7 @@ void main() {
 
       expect(fin.income, isNot(fin.expense));
       expect(theme.brightness, Brightness.light);
-      expect(theme.scaffoldBackgroundColor, Colors.white);
+      expect(theme.scaffoldBackgroundColor, const Color(0xFFF3F6FA));
     });
 
     testWidgets('gives every button a reachable tap target', (tester) async {

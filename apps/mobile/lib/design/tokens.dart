@@ -45,7 +45,7 @@ abstract final class FinRadius {
   static const Radius lg = Radius.circular(16);
   static const Radius pill = Radius.circular(999);
 
-  static const BorderRadius cardBorder = BorderRadius.all(md);
+  static const BorderRadius cardBorder = BorderRadius.all(lg);
   static const BorderRadius sheetBorder =
       BorderRadius.vertical(top: Radius.circular(20));
   static const BorderRadius pillBorder = BorderRadius.all(pill);

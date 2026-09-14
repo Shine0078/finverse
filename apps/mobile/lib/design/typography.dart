@@ -69,15 +69,20 @@ abstract final class FinType {
   /// where this product has an opinion. Overriding every slot is how you end up
   /// fighting the framework on a platform you have not tested.
   static TextTheme textTheme(TextTheme base) => base.copyWith(
+        bodyLarge: base.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
+        bodyMedium: base.bodyMedium?.copyWith(fontSize: 16, height: 1.45),
+        bodySmall: base.bodySmall?.copyWith(fontSize: 14, height: 1.4),
         headlineSmall: base.headlineSmall?.copyWith(
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
         ),
         titleLarge: base.titleLarge?.copyWith(fontWeight: FontWeight.w600),
         titleMedium: base.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+        labelLarge: base.labelLarge?.copyWith(fontSize: 14),
+        labelMedium: base.labelMedium?.copyWith(fontSize: 14),
         // Labels sit next to numbers constantly; matching their figure style
         // stops a "3 accounts" caption jittering beside a tabular amount.
-        labelSmall: base.labelSmall?.copyWith(fontFeatures: numeric),
-        bodySmall: base.bodySmall?.copyWith(height: 1.35),
+        labelSmall:
+            base.labelSmall?.copyWith(fontSize: 12, fontFeatures: numeric),
       );
 }

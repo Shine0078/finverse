@@ -54,6 +54,7 @@ export const CATEGORIES: readonly CategoryDef[] = [
   { slug: 'travel', name: 'Travel', parent: null, kind: 'expense' },
   { slug: 'subscriptions', name: 'Subscriptions', parent: null, kind: 'expense' },
   { slug: 'software', name: 'Software', parent: 'subscriptions', kind: 'expense' },
+  { slug: 'other_expenses', name: 'Other Expenses', parent: null, kind: 'expense' },
 
   // ---- Obligations
   { slug: 'debt', name: 'Debt', parent: null, kind: 'expense' },

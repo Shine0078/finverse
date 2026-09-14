@@ -5,9 +5,10 @@ import { getCategory, isKnownCategory } from '../../domain/categories';
 import { categorizeDescriptor, ruleFromCorrection } from '../../domain/categorization/categorize';
 import { normalizeDescriptor } from '../../domain/categorization/normalize';
 import { addDays } from '../../domain/dates';
-import { analyzeStatement, formatFor } from '../../domain/statement-import/analyze';
+import { analyzeStatement, categorizeStatementDescriptor, formatFor } from '../../domain/statement-import/analyze';
 import { summarizeStatementRows } from '../../domain/statement-import/summary';
 import { detectInternalTransfers, internalTransferIds, isUserCategorised } from '../../domain/transactions/internal-transfers';
+import { UserCorrectionClassifier } from '../../domain/categorization/user-correction-classifier';
 import type { StatementImport, StatementImportEvent, StatementImportJob, StatementRowDraft, StatementRowRecord } from '../../domain/statement-import/types';
 import type { Transaction } from '../../domain/types';
 import { loadConfig } from '../../config';
@@ -292,18 +293,97 @@ export class StatementImportService {
   async approve(userId: string, importId: string): Promise<StatementImport> {
     const found = await this.get(userId, importId);
     if (found.statement.status !== 'ready') throw new ConflictException('This statement is no longer awaiting approval.');
-    if (found.rows.some((row) => row.decision === 'needs_review')) throw new BadRequestException('Review or exclude every flagged row before approval.');
-    const included = found.rows.filter((row) => row.decision === 'include' && row.amount !== null && row.postedAt);
-    if (included.length === 0) throw new BadRequestException('There are no included transactions to approve.');
     const existing = await this.transactions.list(userId, { accountId: found.statement.accountId });
+    const rules = await this.rules.list(userId);
+    const model = UserCorrectionClassifier.fromTransactions(existing);
     const existingProviderIds = new Set(existing.map((transaction) => transaction.providerTxnId));
-    const alreadyPersisted = included.filter((row) => existingProviderIds.has(`manual_${row.fingerprint}`));
-    if (alreadyPersisted.length > 0) {
-      throw new ConflictException('One or more included rows already exist in this account. Exclude them to prevent a duplicate ledger entry.');
+
+    const autoCategorized = new Set<string>();
+    const resolved = found.rows.map((row) => {
+      if (row.categorySlug !== 'unknown' && row.categoryConfidence >= 0.7) return row;
+      const category = categorizeStatementDescriptor(row.description, {
+        rules,
+        model,
+        amount: row.amount,
+      });
+      if (category.categorySlug === 'unknown') return row;
+      autoCategorized.add(row.id);
+      return {
+        ...row,
+        categorySlug: category.categorySlug,
+        categorySource: category.source,
+        categoryConfidence: category.confidence,
+        merchant: category.merchant ?? row.merchant,
+        flags: row.flags.filter((flag) => flag !== 'uncategorized' && flag !== 'low_confidence'),
+      };
+    });
+
+    const valid = resolved.filter(
+      (row) => row.decision !== 'exclude' && row.amount !== null && row.amount !== 0 && row.postedAt,
+    );
+    const duplicateIds = new Set(
+      valid
+        .filter(
+          (row) =>
+            existingProviderIds.has(`manual_${row.fingerprint}`) ||
+            existing.some((transaction) => sameTransactionIdentity(transaction, row)),
+        )
+        .map((row) => row.id),
+    );
+    const included = valid.filter((row) => !duplicateIds.has(row.id));
+    const includedIds = new Set(included.map((row) => row.id));
+    const includeDecisions = found.rows
+      .filter((row) => includedIds.has(row.id) && row.decision !== 'include')
+      .map((row) => row.id);
+    const excludeDecisions = found.rows
+      .filter((row) => row.decision !== 'exclude' && !includedIds.has(row.id))
+      .map((row) => row.id);
+
+    if (includeDecisions.length > 0) {
+      await this.imports.updateRowsDecision(
+        userId,
+        importId,
+        includeDecisions,
+        'include',
+        this.event(importId, null, 'row_edited', {
+          fields: ['decision'],
+          rows: includeDecisions.length,
+          decision: 'include',
+          automatic: true,
+        }),
+      );
     }
-    const alreadyImported = included.filter((row) => existing.some((transaction) => sameTransactionIdentity(transaction, row)));
-    if (alreadyImported.length > 0) {
-      throw new ConflictException('One or more included rows match an existing transaction in this account. Exclude them to prevent a duplicate ledger entry.');
+    if (excludeDecisions.length > 0) {
+      await this.imports.updateRowsDecision(
+        userId,
+        importId,
+        excludeDecisions,
+        'exclude',
+        this.event(importId, null, 'row_edited', {
+          fields: ['decision'],
+          rows: excludeDecisions.length,
+          decision: 'exclude',
+          automatic: true,
+        }),
+      );
+    }
+    for (const row of resolved.filter((candidate) => autoCategorized.has(candidate.id))) {
+      await this.imports.updateRow(
+        userId,
+        importId,
+        row.id,
+        {
+          merchant: row.merchant,
+          categorySlug: row.categorySlug,
+          categorySource: row.categorySource,
+          categoryConfidence: row.categoryConfidence,
+          flags: row.flags,
+        },
+        this.event(importId, row.id, 'row_edited', {
+          fields: ['merchant', 'categorySlug', 'categorySource', 'categoryConfidence', 'flags'],
+          automatic: true,
+        }),
+      );
     }
     const batchId = randomUUID();
     const transactions: Transaction[] = included.map((row) => ({
@@ -313,10 +393,14 @@ export class StatementImportService {
       categorySlug: row.categorySlug, categorySource: row.categorySource, categoryConfidence: row.categoryConfidence,
       isRecurring: row.isRecurring, pending: false, importBatchId: batchId,
     }));
-    const batch: ImportBatch = { id: batchId, accountId: found.statement.accountId, statementImportId: importId, filename: found.statement.filename, status: 'committed', rowsTotal: found.rows.length, rowsImported: transactions.length, rowsDuplicate: found.rows.filter((row) => row.flags.includes('possible_duplicate')).length, rowsInvalid: found.rows.filter((row) => row.flags.includes('extraction_error')).length, createdAt: this.clock.now().toISOString(), revertedAt: null };
+    const batch: ImportBatch = { id: batchId, accountId: found.statement.accountId, statementImportId: importId, filename: found.statement.filename, status: 'committed', rowsTotal: found.rows.length, rowsImported: transactions.length, rowsDuplicate: new Set([...duplicateIds, ...found.rows.filter((row) => row.flags.includes('possible_duplicate')).map((row) => row.id)]).size, rowsInvalid: found.rows.filter((row) => row.amount === null || row.amount === 0 || !row.postedAt).length, createdAt: this.clock.now().toISOString(), revertedAt: null };
     let result: StatementImport | null;
     try {
-      result = await this.imports.finalize(userId, importId, batch, transactions, this.event(importId, null, 'approved', { rows: transactions.length }));
+      result = await this.imports.finalize(userId, importId, batch, transactions, this.event(importId, null, 'approved', {
+        rows: transactions.length,
+        autoCategorized: autoCategorized.size,
+        skipped: found.rows.length - transactions.length,
+      }));
     } catch (error) {
       if (error instanceof Error && error.message === 'STATEMENT_DUPLICATE') {
         throw new ConflictException('One or more included rows already exist in this account. Exclude them to prevent a duplicate ledger entry.');

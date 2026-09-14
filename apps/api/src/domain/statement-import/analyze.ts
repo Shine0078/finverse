@@ -225,7 +225,9 @@ function draftFromReviewed(
   model: UserCorrectionClassifier,
 ): StatementRowDraft {
   const description = row.descriptor ?? row.raw.filter(Boolean).join(' ').slice(0, 500);
-  const categorized = row.descriptor ? categorizeDescriptor(row.descriptor, { rules, model }) : null;
+  const categorized = row.descriptor
+    ? categorizeStatementDescriptor(row.descriptor, { rules, model, amount: row.amount })
+    : null;
   const flags: string[] = [];
   if (row.decision === 'duplicate') flags.push('possible_duplicate');
   if (row.decision === 'invalid') flags.push('extraction_error');
@@ -298,7 +300,9 @@ function parseTextRows(
       .replace(amountMatch[0], '')
       .replace(/\s{2,}/g, ' ')
       .trim();
-    const categorized = description ? categorizeDescriptor(description, { rules, model }) : null;
+    const categorized = description
+      ? categorizeStatementDescriptor(description, { rules, model, amount })
+      : null;
     const flags = [
       ...(postedAt ? [] : ['extraction_error']),
       ...(amount === null || amount === 0 ? ['extraction_error'] : []),
@@ -543,15 +547,22 @@ function textDraft(input: {
   model: UserCorrectionClassifier;
 }): StatementRowDraft {
   const categorizedByMerchant = input.description
-    ? categorizeStatementDescriptor(input.description, {
+    ? categorizeDescriptor(input.description, {
       rules: input.rules,
       model: input.model,
-      amount: input.amount,
     })
     : null;
   const categorized = categorizedByMerchant?.categorySlug !== UNKNOWN_CATEGORY
     ? categorizedByMerchant
-    : issuerCategoryResult(input.issuerCategory) ?? categorizedByMerchant;
+    : issuerCategoryResult(input.issuerCategory) ?? (
+      input.description
+        ? categorizeStatementDescriptor(input.description, {
+          rules: input.rules,
+          model: input.model,
+          amount: input.amount,
+        })
+        : categorizedByMerchant
+    );
   const normalized = normalizeDescriptor(input.description);
   const flags = [
     ...(input.postedAt ? [] : ['extraction_error']),
@@ -589,7 +600,7 @@ function textDraft(input: {
  * infer. Card payments and account transfers are money movement, not income;
  * leaving a positive payment as unknown would inflate cash flow.
  */
-function categorizeStatementDescriptor(
+export function categorizeStatementDescriptor(
   description: string,
   options: {
     rules: readonly CategorizationRule[];
@@ -659,9 +670,67 @@ function categorizeStatementDescriptor(
     return {
       categorySlug: 'income',
       source: 'lexicon',
-      confidence: 0.62,
+      confidence: 0.72,
       merchant: 'Deposit',
-      reason: 'Identified as money deposited; review whether this is income or a transfer.',
+      reason: 'Identified as money deposited into the account.',
+    };
+  }
+
+  const semanticRules: ReadonlyArray<{
+    pattern: RegExp;
+    categorySlug: string;
+    merchant: string;
+    confidence: number;
+  }> = [
+    { pattern: /\b(vend(?:ing|i)?|snack|soda|convenience|canteen)\b/i, categorySlug: 'fast_food', merchant: 'Food and drink', confidence: 0.84 },
+    { pattern: /\b(grocery|grocer|supermarket|food market|produce)\b/i, categorySlug: 'groceries', merchant: 'Grocery store', confidence: 0.82 },
+    { pattern: /\b(cafe|coffee|espresso|bakery|diner|restaurant|pizza|burger|kitchen)\b/i, categorySlug: 'restaurants', merchant: 'Dining', confidence: 0.8 },
+    { pattern: /\b(bus|train|transit|subway|metro|rail|taxi|cab|rideshare)\b/i, categorySlug: 'public_transit', merchant: 'Transit', confidence: 0.8 },
+    { pattern: /\b(parking|parkade|meter)\b/i, categorySlug: 'parking', merchant: 'Parking', confidence: 0.86 },
+    { pattern: /\b(gas station|fuel|petrol|service station)\b/i, categorySlug: 'fuel', merchant: 'Fuel', confidence: 0.82 },
+    { pattern: /\b(pharmacy|drug store|prescription)\b/i, categorySlug: 'pharmacy', merchant: 'Pharmacy', confidence: 0.84 },
+    { pattern: /\b(clinic|medical|dental|optical|health)\b/i, categorySlug: 'healthcare', merchant: 'Healthcare', confidence: 0.78 },
+    { pattern: /\b(hydro|electric|energy|water bill|utility)\b/i, categorySlug: 'utilities', merchant: 'Utilities', confidence: 0.82 },
+    { pattern: /\b(phone bill|mobile plan|wireless)\b/i, categorySlug: 'phone', merchant: 'Phone service', confidence: 0.8 },
+    { pattern: /\b(internet|broadband|fibre|fiber)\b/i, categorySlug: 'internet', merchant: 'Internet service', confidence: 0.8 },
+    { pattern: /\b(subscription|membership|monthly plan)\b/i, categorySlug: 'subscriptions', merchant: 'Subscription', confidence: 0.8 },
+    { pattern: /\b(software|cloud|hosting|domain renewal)\b/i, categorySlug: 'software', merchant: 'Software', confidence: 0.8 },
+    { pattern: /\b(cinema|movie|theatre|theater|concert|museum)\b/i, categorySlug: 'entertainment', merchant: 'Entertainment', confidence: 0.8 },
+    { pattern: /\b(hotel|airline|flight|travel|resort)\b/i, categorySlug: 'travel', merchant: 'Travel', confidence: 0.82 },
+    { pattern: /\b(apparel|clothing|fashion|shoe|footwear)\b/i, categorySlug: 'clothing', merchant: 'Clothing', confidence: 0.8 },
+    { pattern: /\b(electronics|computer|laptop|mobile device)\b/i, categorySlug: 'electronics', merchant: 'Electronics', confidence: 0.8 },
+    { pattern: /\b(store|shop|retail|marketplace|mall)\b/i, categorySlug: 'shopping', merchant: 'Retail', confidence: 0.74 },
+    { pattern: /\b(insurance|assurance)\b/i, categorySlug: 'insurance', merchant: 'Insurance', confidence: 0.84 },
+    { pattern: /\b(tax|revenue agency)\b/i, categorySlug: 'taxes', merchant: 'Taxes', confidence: 0.82 },
+    { pattern: /\b(fee|service charge|interest charge)\b/i, categorySlug: 'fees', merchant: 'Fees', confidence: 0.82 },
+  ];
+  const semantic = semanticRules.find((rule) => rule.pattern.test(normalized));
+  if (semantic) {
+    return {
+      categorySlug: semantic.categorySlug,
+      source: 'model',
+      confidence: semantic.confidence,
+      merchant: semantic.merchant,
+      reason: `Inferred ${semantic.categorySlug.replaceAll('_', ' ')} from the transaction description.`,
+    };
+  }
+
+  if ((options.amount ?? 0) > 0) {
+    return {
+      categorySlug: 'income',
+      source: 'model',
+      confidence: 0.7,
+      merchant: normalized || 'Income',
+      reason: 'Classified as income because the statement records money entering the account.',
+    };
+  }
+  if ((options.amount ?? 0) < 0) {
+    return {
+      categorySlug: 'other_expenses',
+      source: 'model',
+      confidence: 0.7,
+      merchant: normalized || 'Other expense',
+      reason: 'Classified as another expense because the statement records money leaving the account.',
     };
   }
   return categorized;

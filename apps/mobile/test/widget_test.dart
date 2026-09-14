@@ -19,6 +19,7 @@ import 'package:finverse/api/passkey_ceremony.dart';
 import 'package:finverse/api/session_store.dart';
 import 'package:finverse/app_theme.dart';
 import 'package:finverse/dashboard_layout.dart';
+import 'package:finverse/design/design.dart';
 import 'package:finverse/l10n/app_localizations.dart';
 import 'package:finverse/main.dart';
 import 'package:finverse/models/models.dart';
@@ -908,7 +909,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     var requests = 0;
@@ -940,7 +941,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     final api = clientWith(
@@ -995,7 +996,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     var online = false;
@@ -1044,7 +1045,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     final api = clientWith(
@@ -1072,7 +1073,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     await cache.enqueueMutation(
@@ -1115,7 +1116,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'access',
       refreshToken: 'refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     var online = false;
@@ -1187,7 +1188,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'active-access',
       refreshToken: 'active-refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     late http.Request seen;
@@ -1210,7 +1211,7 @@ void main() {
     await store.write(const SessionTokens(
       accessToken: 'active-access',
       refreshToken: 'active-refresh',
-      refreshExpiresAt: '2026-09-08T00:00:00.000Z',
+      refreshExpiresAt: '2099-09-08T00:00:00.000Z',
       userId: 'user-1',
     ));
     final api = clientWith(
@@ -1410,7 +1411,7 @@ void main() {
       }
       verification = request;
       return http.Response(
-        '{"user":{"id":"user-1","email":"sam@example.com","emailVerified":true},"tokens":{"accessToken":"access","refreshToken":"refresh","refreshExpiresAt":"2026-09-08T00:00:00.000Z"}}',
+        '{"user":{"id":"user-1","email":"sam@example.com","emailVerified":true},"tokens":{"accessToken":"access","refreshToken":"refresh","refreshExpiresAt":"2099-09-08T00:00:00.000Z"}}',
         200,
       );
     }));
@@ -2537,6 +2538,36 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('dashboard header stays compact at iPhone and Android widths',
+      (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final api = clientWith(
+      MockClient((_) async => http.Response('{}', 500)),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      theme: FinTheme.light(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: DashboardScreen(api: api),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppBar), findsOneWidget);
+    expect(find.byTooltip('Cash-flow planning'), findsNothing);
+    expect(
+      find.byWidgetPredicate((widget) => widget is PopupMenuButton),
+      findsOneWidget,
+    );
+    expect(find.byTooltip('Sync accounts'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
       'statement import offers account creation instead of a disabled upload',
       (tester) async {
@@ -2602,13 +2633,13 @@ void main() {
 
   testWidgets('statement import selects all rows for one bulk decision',
       (tester) async {
-    const detail = '{"statement":{"id":"stmt-1","accountId":"acc-1","filename":"july.csv","mimeType":"text/csv","format":"csv","status":"ready","rowsTotal":2,"rowsIncluded":2,"rowsExcluded":0,"rowsNeedsReview":0,"createdAt":"2026-08-01T00:00:00Z","documentDetails":{"currency":"CAD","periodStart":"2026-07-01","periodEnd":"2026-07-31"}},"rows":[{"id":"row-1","importId":"stmt-1","sourceLine":2,"description":"Grocery","amount":-1000,"currency":"CAD","direction":"debit","categorySlug":"groceries","categoryConfidence":0.9,"decision":"include","flags":[],"postedAt":"2026-07-01","isRecurring":false},{"id":"row-2","importId":"stmt-1","sourceLine":3,"description":"Transit","amount":-500,"currency":"CAD","direction":"debit","categorySlug":"transportation","categoryConfidence":0.9,"decision":"include","flags":[],"postedAt":"2026-07-02","isRecurring":false}]}';
+    const detail = '{"statement":{"id":"stmt-1","accountId":"acc-1","filename":"july.csv","mimeType":"text/csv","format":"csv","status":"ready","rowsTotal":2,"rowsIncluded":0,"rowsExcluded":0,"rowsNeedsReview":2,"createdAt":"2026-08-01T00:00:00Z","documentDetails":{"currency":"CAD","periodStart":"2026-07-01","periodEnd":"2026-07-31"}},"rows":[{"id":"row-1","importId":"stmt-1","sourceLine":2,"description":"Unknown vending","amount":-1000,"currency":"CAD","direction":"debit","categorySlug":"unknown","categorySource":"unknown","categoryConfidence":0,"decision":"needs_review","flags":["low_confidence","uncategorized"],"postedAt":"2026-07-01","isRecurring":false},{"id":"row-2","importId":"stmt-1","sourceLine":3,"description":"Unknown shop","amount":-500,"currency":"CAD","direction":"debit","categorySlug":"unknown","categorySource":"unknown","categoryConfidence":0,"decision":"needs_review","flags":["low_confidence","uncategorized"],"postedAt":"2026-07-02","isRecurring":false}]}';
     final api = clientWith(MockClient((request) async {
       if (request.method == 'GET' && request.url.path == '/api/accounts') {
         return http.Response('[{"id":"acc-1","name":"CAD checking","type":"checking","mask":"manual","currency":"CAD","balanceCurrent":0,"balanceFormatted":"CA\$0.00","source":"manual"}]', 200);
       }
       if (request.method == 'GET' && request.url.path == '/api/imports/statements') {
-        return http.Response('[{"id":"stmt-1","accountId":"acc-1","filename":"july.csv","mimeType":"text/csv","format":"csv","status":"ready","rowsTotal":2,"rowsIncluded":2,"rowsExcluded":0,"rowsNeedsReview":0,"createdAt":"2026-08-01T00:00:00Z"}]', 200);
+        return http.Response('[{"id":"stmt-1","accountId":"acc-1","filename":"july.csv","mimeType":"text/csv","format":"csv","status":"ready","rowsTotal":2,"rowsIncluded":0,"rowsExcluded":0,"rowsNeedsReview":2,"createdAt":"2026-08-01T00:00:00Z"}]', 200);
       }
       if (request.method == 'GET' && request.url.path == '/api/imports/statements/stmt-1') {
         return http.Response(detail, 200);
@@ -2632,6 +2663,16 @@ void main() {
     await tester.pump();
     expect(find.text('Include selected'), findsOneWidget);
     expect(find.text('Exclude selected'), findsOneWidget);
+    expect(find.textContaining('unknown · 0% confidence'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Approve transactions now'),
+      240,
+      scrollable: find.byType(Scrollable).last,
+    );
+    final approve = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Approve transactions now'),
+    );
+    expect(approve.onPressed, isNotNull);
   });
 
   testWidgets('statement import can remove an empty result for reanalysis',

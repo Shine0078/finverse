@@ -30,7 +30,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   HealthScore? _health;
   SubscriptionsReport? _subscriptions;
   bool _loading = true;
+  bool _refreshing = false;
   String? _error;
+  String? _refreshError;
   String _period = 'month';
   String _currency = 'USD';
   DateTime? _customFrom;
@@ -58,10 +60,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _load() async {
     final generation = ++_loadGeneration;
+    final initialLoad = _analytics == null;
     widget.api.resetOfflineStatus();
     setState(() {
-      _loading = true;
+      _loading = initialLoad;
+      _refreshing = !initialLoad;
       _error = null;
+      _refreshError = null;
     });
     try {
       final accounts = await widget.api.accounts();
@@ -88,7 +93,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final imports = results[4] as List<StatementImport>;
       StatementImport? latestApproved;
       for (final item in imports) {
-        if (item.status == 'approved' && item.documentDetails?.periodStart != null && item.documentDetails?.periodEnd != null) {
+        if (item.status == 'approved' &&
+            item.documentDetails?.periodStart != null &&
+            item.documentDetails?.periodEnd != null) {
           latestApproved = item;
           break;
         }
@@ -100,12 +107,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _subscriptions = results[3] as SubscriptionsReport;
         _latestApprovedImport = latestApproved;
         _loading = false;
+        _refreshing = false;
       });
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = friendlyErrorMessage(error);
+        if (initialLoad) {
+          _error = friendlyErrorMessage(error);
+        } else {
+          _refreshError = friendlyErrorMessage(error);
+        }
         _loading = false;
+        _refreshing = false;
       });
     }
   }
@@ -143,8 +156,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Future<void> _viewLatestStatementPeriod() async {
     final details = _latestApprovedImport?.documentDetails;
-    final from = details?.periodStart == null ? null : DateTime.tryParse(details!.periodStart!);
-    final to = details?.periodEnd == null ? null : DateTime.tryParse(details!.periodEnd!);
+    final from = details?.periodStart == null
+        ? null
+        : DateTime.tryParse(details!.periodStart!);
+    final to = details?.periodEnd == null
+        ? null
+        : DateTime.tryParse(details!.periodEnd!);
     if (from == null || to == null) return;
     setState(() {
       _period = 'custom';
@@ -163,8 +180,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         actions: [
           IconButton(
             tooltip: l10n.analyticsRefreshTooltip,
-            onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+            onPressed: _loading || _refreshing ? null : _load,
+            icon: _refreshing
+                ? const SizedBox(
+                    width: 19,
+                    height: 19,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.refresh),
           ),
         ],
       ),
@@ -198,243 +224,355 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         .toList();
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          Text(_periodLabel(_period),
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
-            initialValue: _period,
-            decoration: InputDecoration(
-                labelText: AppLocalizations.of(context).analyticsPeriodLabel),
-            items: [
-              DropdownMenuItem(
-                  value: 'week',
-                  child: Text(AppLocalizations.of(context).analyticsThisWeek)),
-              DropdownMenuItem(
-                  value: 'month',
-                  child: Text(AppLocalizations.of(context).analyticsThisMonth)),
-              DropdownMenuItem(
-                  value: '3m',
-                  child: Text(
-                      AppLocalizations.of(context).analyticsLastThreeMonths)),
-              DropdownMenuItem(
-                  value: '6m',
-                  child: Text(
-                      AppLocalizations.of(context).analyticsLastSixMonths)),
-              DropdownMenuItem(
-                  value: 'year',
-                  child: Text(AppLocalizations.of(context).analyticsLastYear)),
-              DropdownMenuItem(
-                  value: 'lifetime',
-                  child:
-                      Text(AppLocalizations.of(context).analyticsAllHistory)),
-              DropdownMenuItem(
-                  value: 'custom',
-                  child:
-                      Text(AppLocalizations.of(context).analyticsCustomRange)),
-            ],
-            onChanged: (value) => _changePeriod(value),
+      child: LayoutBuilder(
+        builder: (context, constraints) => ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            constraints.maxWidth >= 720 ? 24 : 16,
+            16,
+            constraints.maxWidth >= 720 ? 24 : 16,
+            36,
           ),
-          const SizedBox(height: 12),
-          Text(
-            '${analytics.periodStart} to ${analytics.periodEnd}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          const SizedBox(height: 12),
-          if (_period == 'month' &&
-              analytics.spendingByCategory.isEmpty &&
-              _latestApprovedImport?.documentDetails?.periodStart != null &&
-              _latestApprovedImport?.documentDetails?.periodEnd != null)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.info_outline),
-                title: const Text('No activity in this period'),
-                subtitle: Text(
-                  'Your approved statement covers ${_latestApprovedImport!.documentDetails!.periodStart} to ${_latestApprovedImport!.documentDetails!.periodEnd}.',
-                ),
-                trailing: TextButton(
-                  onPressed: _loading ? null : _viewLatestStatementPeriod,
-                  child: const Text('View statement period'),
-                ),
-              ),
-            ),
-          if (_period == 'month' &&
-              analytics.spendingByCategory.isEmpty &&
-              _latestApprovedImport?.documentDetails?.periodStart != null &&
-              _latestApprovedImport?.documentDetails?.periodEnd != null)
-            const SizedBox(height: 12),
-          _metricGrid(context, analytics),
-          const SizedBox(height: 20),
-          CashFlowSankey(
-            incomeSources: analytics.incomeBySource,
-            expenseCategories: analytics.spendingByCategory,
-            currency: analytics.currency,
-            totalIncome: analytics.trend.fold<int>(
-              0,
-              (sum, point) => sum + point.income,
-            ),
-            totalExpenses: analytics.grossExpenses,
-          ),
-          const SizedBox(height: 20),
-          if (analytics.trend.isNotEmpty) ...[
-            TrendChart(points: analytics.trend),
-            const SizedBox(height: 20),
-            SpendingHeatmap(points: analytics.trend),
-            const SizedBox(height: 20),
-          ],
-          if (categories.isNotEmpty) ...[
-            SpendingChart(
-              categories: categories,
-              onCategorySelected: (category) => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => TransactionsScreen(
-                    api: widget.api,
-                    initialCategorySlug: category.categorySlug,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-          ] else
-            FinEmptyState(
-              icon: Icons.insights_outlined,
-              title: AppLocalizations.of(context).analyticsHistoryEmptyTitle,
-              message: AppLocalizations.of(context).analyticsHistoryEmptyDetail,
-            ),
-          if (analytics.spendingByMerchant.isNotEmpty) ...[
-            Text('Spending by merchant',
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Card(
-              child: Column(
-                children: analytics.spendingByMerchant
-                    .take(8)
-                    .map((merchant) => ListTile(
-                          leading: const Icon(Icons.storefront_outlined),
-                          title: Text(merchant.label),
-                          trailing: Text(merchant.totalFormatted),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => TransactionsScreen(
-                                api: widget.api,
-                                initialSearch: merchant.label,
-                              ),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1240),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _periodControlCard(context, analytics),
+                    if (_refreshing) ...[
+                      const SizedBox(height: 12),
+                      const FinSyncingChip(label: 'Refreshing analytics…'),
+                    ],
+                    if (_refreshError != null) ...[
+                      const SizedBox(height: 12),
+                      _refreshFailureCard(context),
+                    ],
+                    const SizedBox(height: 16),
+                    if (_period == 'month' &&
+                        analytics.spendingByCategory.isEmpty &&
+                        _latestApprovedImport?.documentDetails?.periodStart !=
+                            null &&
+                        _latestApprovedImport?.documentDetails?.periodEnd !=
+                            null)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.info_outline),
+                          title: const Text('No activity in this period'),
+                          subtitle: Text(
+                            'Your approved statement covers ${_latestApprovedImport!.documentDetails!.periodStart} to ${_latestApprovedImport!.documentDetails!.periodEnd}.',
+                          ),
+                          trailing: TextButton(
+                            onPressed:
+                                _loading ? null : _viewLatestStatementPeriod,
+                            child: const Text('View statement period'),
+                          ),
+                        ),
+                      ),
+                    if (_period == 'month' &&
+                        analytics.spendingByCategory.isEmpty &&
+                        _latestApprovedImport?.documentDetails?.periodStart !=
+                            null &&
+                        _latestApprovedImport?.documentDetails?.periodEnd !=
+                            null)
+                      const SizedBox(height: 12),
+                    _metricGrid(context, analytics),
+                    const SizedBox(height: 20),
+                    CashFlowSankey(
+                      incomeSources: analytics.incomeBySource,
+                      expenseCategories: analytics.spendingByCategory,
+                      currency: analytics.currency,
+                      totalIncome: analytics.trend.fold<int>(
+                        0,
+                        (sum, point) => sum + point.income,
+                      ),
+                      totalExpenses: analytics.grossExpenses,
+                    ),
+                    const SizedBox(height: 20),
+                    if (analytics.trend.isNotEmpty) ...[
+                      TrendChart(points: analytics.trend),
+                      const SizedBox(height: 20),
+                      SpendingHeatmap(points: analytics.trend),
+                      const SizedBox(height: 20),
+                    ],
+                    if (categories.isNotEmpty) ...[
+                      SpendingChart(
+                        categories: categories,
+                        onCategorySelected: (category) =>
+                            Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => TransactionsScreen(
+                              api: widget.api,
+                              initialCategorySlug: category.categorySlug,
                             ),
                           ),
-                        ))
-                    .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ] else
+                      FinEmptyState(
+                        icon: Icons.insights_outlined,
+                        title: AppLocalizations.of(context)
+                            .analyticsHistoryEmptyTitle,
+                        message: AppLocalizations.of(context)
+                            .analyticsHistoryEmptyDetail,
+                      ),
+                    if (analytics.spendingByMerchant.isNotEmpty) ...[
+                      Text('Spending by merchant',
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Card(
+                        child: Column(
+                          children: analytics.spendingByMerchant
+                              .take(8)
+                              .map((merchant) => ListTile(
+                                    leading:
+                                        const Icon(Icons.storefront_outlined),
+                                    title: Text(merchant.label),
+                                    trailing: Text(merchant.totalFormatted),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => TransactionsScreen(
+                                          api: widget.api,
+                                          initialSearch: merchant.label,
+                                        ),
+                                      ),
+                                    ),
+                                  ))
+                              .toList(),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    _velocityCard(context, analytics.velocity),
+                    if (analytics.refundMatches.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      _refundCard(context, analytics.refundMatches),
+                    ],
+                    if (_health != null) ...[
+                      const SizedBox(height: 4),
+                      HealthScoreCard(score: _health!),
+                      const SizedBox(height: 20),
+                    ],
+                    if (_subscriptions != null) _subscriptionCard(context),
+                    if (insights.insights.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                          AppLocalizations.of(context)
+                              .analyticsExplainableInsights,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      ...insights.insights.map((insight) => Card(
+                            child: ListTile(
+                              leading: Icon(
+                                insight.severity == 'positive'
+                                    ? Icons.trending_down
+                                    : Icons.info_outline,
+                                color: insight.severity == 'positive'
+                                    ? Theme.of(context).colorScheme.primary
+                                    : Theme.of(context).colorScheme.tertiary,
+                              ),
+                              title: Text(insight.title),
+                              trailing: _priorityChip(
+                                  Theme.of(context), insight.priority),
+                              subtitle: Text(
+                                '${insight.detail}\n${AppLocalizations.of(context).analyticsEvidenceCount(insight.evidenceCount)}',
+                              ),
+                              isThreeLine: true,
+                            ),
+                          )),
+                    ],
+                    if (analytics.timeline.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(AppLocalizations.of(context).analyticsTimeline,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 8),
+                      Card(
+                        child: Column(
+                          children: analytics.timeline
+                              .take(8)
+                              .map((event) => ListTile(
+                                    dense: true,
+                                    leading: Icon(_timelineIcon(event.kind)),
+                                    title: Text(event.label),
+                                    subtitle: Text(
+                                        '${event.date} · ${_timelineKind(event.kind)}'),
+                                    trailing: Text(event.amountFormatted),
+                                  ))
+                              .toList(),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () =>
+                          Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => PlanningScreen(api: widget.api),
+                      )),
+                      icon: const Icon(Icons.show_chart),
+                      label: Text(
+                          AppLocalizations.of(context).analyticsPlanAction),
+                    ),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 20),
           ],
-          _velocityCard(context, analytics.velocity),
-          if (analytics.refundMatches.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _refundCard(context, analytics.refundMatches),
-          ],
-          if (_health != null) ...[
-            const SizedBox(height: 4),
-            HealthScoreCard(score: _health!),
-            const SizedBox(height: 20),
-          ],
-          if (_subscriptions != null) _subscriptionCard(context),
-          if (insights.insights.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(AppLocalizations.of(context).analyticsExplainableInsights,
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            ...insights.insights.map((insight) => Card(
-                  child: ListTile(
-                    leading: Icon(
-                      insight.severity == 'positive'
-                          ? Icons.trending_down
-                          : Icons.info_outline,
-                      color: insight.severity == 'positive'
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.tertiary,
-                    ),
-                    title: Text(insight.title),
-                    trailing:
-                        _priorityChip(Theme.of(context), insight.priority),
-                    subtitle: Text(
-                      '${insight.detail}\n${AppLocalizations.of(context).analyticsEvidenceCount(insight.evidenceCount)}',
-                    ),
-                    isThreeLine: true,
-                  ),
-                )),
-          ],
-          if (analytics.timeline.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text(AppLocalizations.of(context).analyticsTimeline,
-                style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            Card(
-              child: Column(
-                children: analytics.timeline
-                    .take(8)
-                    .map((event) => ListTile(
-                          dense: true,
-                          leading: Icon(_timelineIcon(event.kind)),
-                          title: Text(event.label),
-                          subtitle:
-                              Text('${event.date} · ${_timelineKind(event.kind)}'),
-                          trailing: Text(event.amountFormatted),
-                        ))
-                    .toList(),
-              ),
-            ),
-          ],
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => PlanningScreen(api: widget.api),
-            )),
-            icon: const Icon(Icons.show_chart),
-            label: Text(AppLocalizations.of(context).analyticsPlanAction),
-          ),
-        ],
+        ),
       ),
     );
   }
 
+  Widget _periodControlCard(
+    BuildContext context,
+    AnalyticsReport analytics,
+  ) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final selector = SizedBox(
+      width: 280,
+      child: DropdownButtonFormField<String>(
+        key: ValueKey(_period),
+        initialValue: _period,
+        decoration: InputDecoration(labelText: l10n.analyticsPeriodLabel),
+        items: [
+          DropdownMenuItem(value: 'week', child: Text(l10n.analyticsThisWeek)),
+          DropdownMenuItem(
+              value: 'month', child: Text(l10n.analyticsThisMonth)),
+          DropdownMenuItem(
+              value: '3m', child: Text(l10n.analyticsLastThreeMonths)),
+          DropdownMenuItem(
+              value: '6m', child: Text(l10n.analyticsLastSixMonths)),
+          DropdownMenuItem(value: 'year', child: Text(l10n.analyticsLastYear)),
+          DropdownMenuItem(
+              value: 'lifetime', child: Text(l10n.analyticsAllHistory)),
+          DropdownMenuItem(
+              value: 'custom', child: Text(l10n.analyticsCustomRange)),
+        ],
+        onChanged: _refreshing ? null : _changePeriod,
+      ),
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(FinSpace.lg),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final details = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_periodLabel(_period), style: theme.textTheme.titleLarge),
+                const SizedBox(height: 4),
+                Text(
+                  '${analytics.periodStart} to ${analytics.periodEnd} · ${analytics.currency}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            );
+            if (constraints.maxWidth < 620) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  details,
+                  const SizedBox(height: 14),
+                  SizedBox(width: double.infinity, child: selector),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: details),
+                const SizedBox(width: 20),
+                selector,
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _refreshFailureCard(BuildContext context) => Card(
+        color: context.finColors.warningContainer,
+        child: ListTile(
+          leading: Icon(Icons.sync_problem,
+              color: context.finColors.onWarningContainer),
+          title: Text(
+            'Latest refresh did not finish',
+            style: TextStyle(color: context.finColors.onWarningContainer),
+          ),
+          subtitle: Text(
+            'The report below is still your last successfully loaded data.',
+            style: TextStyle(color: context.finColors.onWarningContainer),
+          ),
+          trailing:
+              TextButton(onPressed: _load, child: const Text('Try again')),
+        ),
+      );
+
   Widget _metricGrid(BuildContext context, AnalyticsReport analytics) {
     final l10n = AppLocalizations.of(context);
     final values = [
-      (l10n.analyticsIncome, analytics.totalIncomeFormatted),
-      (l10n.analyticsNetExpenses, analytics.netExpensesFormatted),
-      (l10n.analyticsSavings, analytics.savingsFormatted),
+      (
+        l10n.analyticsIncome,
+        analytics.totalIncomeFormatted,
+        Icons.south_west,
+        context.finColors.income,
+        analytics.recurringIncomeFormatted,
+      ),
+      (
+        l10n.analyticsNetExpenses,
+        analytics.netExpensesFormatted,
+        Icons.north_east,
+        context.finColors.expense,
+        '${analytics.expenseCount} transactions',
+      ),
+      (
+        l10n.analyticsSavings,
+        analytics.savingsFormatted,
+        Icons.savings_outlined,
+        context.finColors.positiveTrend,
+        analytics.averageMonthlySavingsFormatted,
+      ),
       (
         l10n.analyticsSavingsRate,
-        '${analytics.savingsRate.toStringAsFixed(1)}%'
+        '${analytics.savingsRate.toStringAsFixed(1)}%',
+        Icons.percent,
+        Theme.of(context).colorScheme.primary,
+        'For this period',
       ),
     ];
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.75,
-      children: values
-          .map((entry) => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(entry.$1,
-                          style: Theme.of(context).textTheme.labelMedium),
-                      const SizedBox(height: 6),
-                      Text(entry.$2,
-                          style: Theme.of(context).textTheme.titleMedium),
-                    ],
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1040
+            ? 4
+            : constraints.maxWidth >= 560
+                ? 2
+                : 1;
+        const gap = 12.0;
+        final width = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final value in values)
+              SizedBox(
+                width: width,
+                height: 128,
+                child: FinSummaryTile(
+                  label: value.$1,
+                  value: value.$2,
+                  icon: value.$3,
+                  accent: value.$4,
+                  supporting: value.$5,
                 ),
-              ))
-          .toList(),
+              ),
+          ],
+        );
+      },
     );
   }
 

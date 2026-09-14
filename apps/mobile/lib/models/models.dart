@@ -1913,6 +1913,7 @@ class StatementRow {
     required this.direction,
     this.merchant,
     required this.categorySlug,
+    required this.categorySource,
     required this.categoryConfidence,
     required this.decision,
     required this.flags,
@@ -1930,6 +1931,7 @@ class StatementRow {
         direction: json['direction'] as String? ?? 'unknown',
         merchant: json['merchant'] as String?,
         categorySlug: json['categorySlug'] as String? ?? 'unknown',
+        categorySource: json['categorySource'] as String? ?? 'unknown',
         categoryConfidence:
             (json['categoryConfidence'] as num?)?.toDouble() ?? 0,
         decision: json['decision'] as String? ?? 'needs_review',
@@ -1949,6 +1951,7 @@ class StatementRow {
   final String direction;
   final String? merchant;
   final String categorySlug;
+  final String categorySource;
   final double categoryConfidence;
   final String decision;
   final List<String> flags;

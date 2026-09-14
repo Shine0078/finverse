@@ -55,8 +55,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       setState(() => _index = index),
                   extended: extended,
                   labelType: extended ? null : NavigationRailLabelType.all,
-                  backgroundColor:
-                      Theme.of(context).colorScheme.surfaceContainerLow,
+                  groupAlignment: -0.72,
+                  leading: _BrandMark(extended: extended),
                   destinations: _railDestinations(l10n),
                 ),
                 const VerticalDivider(width: 1),
@@ -84,67 +84,67 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context, pending, _) => ValueListenableBuilder<int>(
             valueListenable: widget.api.rejectedMutationCount,
             builder: (context, rejected, _) => Column(
-            children: [
-              if (cachedAt != null || pending > 0 || rejected > 0)
-                Material(
-                  color: rejected > 0
-                      ? Theme.of(context).colorScheme.errorContainer
-                      : Theme.of(context).colorScheme.tertiaryContainer,
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(rejected > 0
-                        ? Icons.error_outline
-                        : Icons.cloud_off_outlined),
-                    title: Text(rejected > 0
-                        ? l10n.offlineBannerRejected
-                        : pending > 0
-                            ? l10n.offlineBannerPending
-                            : l10n.offlineBannerTitle),
-                    subtitle: Text(rejected > 0
-                        ? l10n.offlineBannerRejectedDetail(rejected)
-                        : pending > 0
-                            ? l10n.offlineBannerPendingDetail(pending)
-                            : l10n.offlineBannerLastUpdated(DateFormat.yMMMd()
-                                .add_jm()
-                                .format(cachedAt!.toLocal()))),
-                    trailing: rejected > 0
-                        ? TextButton(
-                            onPressed: () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => OfflineConflictScreen(
-                                  api: widget.api,
+              children: [
+                if (cachedAt != null || pending > 0 || rejected > 0)
+                  Material(
+                    color: rejected > 0
+                        ? Theme.of(context).colorScheme.errorContainer
+                        : Theme.of(context).colorScheme.tertiaryContainer,
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(rejected > 0
+                          ? Icons.error_outline
+                          : Icons.cloud_off_outlined),
+                      title: Text(rejected > 0
+                          ? l10n.offlineBannerRejected
+                          : pending > 0
+                              ? l10n.offlineBannerPending
+                              : l10n.offlineBannerTitle),
+                      subtitle: Text(rejected > 0
+                          ? l10n.offlineBannerRejectedDetail(rejected)
+                          : pending > 0
+                              ? l10n.offlineBannerPendingDetail(pending)
+                              : l10n.offlineBannerLastUpdated(DateFormat.yMMMd()
+                                  .add_jm()
+                                  .format(cachedAt!.toLocal()))),
+                      trailing: rejected > 0
+                          ? TextButton(
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => OfflineConflictScreen(
+                                    api: widget.api,
+                                  ),
                                 ),
                               ),
-                            ),
-                            child: Text(l10n.offlineBannerReviewRejected),
-                          )
-                        : null,
+                              child: Text(l10n.offlineBannerReviewRejected),
+                            )
+                          : null,
+                    ),
+                  ),
+                Expanded(
+                  child: IndexedStack(
+                    index: _index,
+                    children: [
+                      DashboardScreen(
+                        api: widget.api,
+                        appLockController: widget.appLockController,
+                        onSignOut: widget.onSignOut,
+                        onAccountDeleted: widget.onAccountDeleted,
+                      ),
+                      TransactionsScreen(api: widget.api),
+                      AnalyticsScreen(api: widget.api),
+                      BankConnectionsScreen(api: widget.api),
+                      ProfileScreen(
+                        api: widget.api,
+                        appLockController: widget.appLockController,
+                        onSignOut: widget.onSignOut,
+                        onAccountDeleted: widget.onAccountDeleted,
+                      ),
+                    ],
                   ),
                 ),
-              Expanded(
-                child: IndexedStack(
-                  index: _index,
-                  children: [
-                    DashboardScreen(
-                      api: widget.api,
-                      appLockController: widget.appLockController,
-                      onSignOut: widget.onSignOut,
-                      onAccountDeleted: widget.onAccountDeleted,
-                    ),
-                    TransactionsScreen(api: widget.api),
-                    AnalyticsScreen(api: widget.api),
-                    BankConnectionsScreen(api: widget.api),
-                    ProfileScreen(
-                      api: widget.api,
-                      appLockController: widget.appLockController,
-                      onSignOut: widget.onSignOut,
-                      onAccountDeleted: widget.onAccountDeleted,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
         ),
       );
@@ -181,4 +181,45 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.person_outline),
             label: Text(l10n.navProfile)),
       ];
+}
+
+class _BrandMark extends StatelessWidget {
+  const _BrandMark({required this.extended});
+
+  final bool extended;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 18, 12, 28),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Colors.white,
+                size: 21,
+              ),
+            ),
+            if (extended) ...[
+              const SizedBox(width: 12),
+              const Text(
+                'FINVERSE',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
 }
