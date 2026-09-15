@@ -45,7 +45,7 @@ dependencies:
   # Android WorkManager + iOS BGTaskScheduler. The task performs only a
   # credentialed, cursor-based bank refresh and is always best-effort: each OS
   # decides exactly when it has battery/network budget to run it.
-  workmanager: ^0.10.0
+  workmanager: ^0.10.10
 
 dev_dependencies:
   flutter_test:
