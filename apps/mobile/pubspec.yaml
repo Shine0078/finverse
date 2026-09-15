@@ -33,7 +33,7 @@ dependencies:
   # Session tokens go in the platform keystore (Keychain / EncryptedSharedPreferences),
   # not shared preferences. A refresh token is a long-lived credential for
   # someone's bank data.
-  flutter_secure_storage: ^10.3.1
+  flutter_secure_storage: ^11.1.1
   # Only a non-sensitive signed-out marker lives here so logout can complete
   # while the platform keystore is locked; session tokens never do.
   shared_preferences: ^2.5.3
