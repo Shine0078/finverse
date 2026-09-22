@@ -10,3 +10,24 @@ node_modules
 scratchpad
 *.log
 .env*
+
+# Private workstation data must never enter a cloud build.
+**/.env
+**/.env.*
+**/.postgres-data
+**/backups
+**/*.dump
+**/*.dump.age
+**/*.p12
+**/*.pfx
+**/*.jks
+**/key.properties
+**/cloudrun.env.yaml
+**/finverse-cloudrun.env.yaml
+.claude
+.openai
+tmp/
+output/
+samuel-goals-dashboard/
+*.tgz
+*.tar.gz

@@ -1,6 +1,6 @@
 import { createHash, generateKeyPairSync, randomBytes, type JsonWebKey } from 'node:crypto';
 import { ServiceUnavailableException } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 
 import { FixedClock } from '../src/infra/clock';
@@ -102,6 +102,21 @@ const transaction = {
 };
 
 describe('banking integration', () => {
+  it('recovers from a queue outage and does not claim work after shutdown', async () => {
+    const queue = new InMemoryBankWebhookStore();
+    const claim = vi.spyOn(queue, 'claim').mockRejectedValueOnce(new Error('private connection detail')).mockResolvedValue([]);
+    const service = new BankingService(
+      new InMemoryBankLinkStore(), new FakeProvider(), new AesGcmBankTokenCipher(randomBytes(32)),
+      queue, new InMemoryAccountStore(), new InMemoryTransactionStore(), new InMemoryRuleStore(),
+      new InMemoryNotificationStore(), new FixedClock('2026-08-08'), billingHarness().billing,
+    );
+    await expect(service.drainWebhookQueue()).resolves.toBeUndefined();
+    await expect(service.drainWebhookQueue()).resolves.toBeUndefined();
+    service.onModuleDestroy();
+    await service.drainWebhookQueue();
+    expect(claim).toHaveBeenCalledTimes(2);
+  });
+
   it('maps provider failures without exposing SDK request details', async () => {
     const provider = new FailingProvider();
     const service = new BankingService(

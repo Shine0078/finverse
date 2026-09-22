@@ -159,10 +159,9 @@ class OfflineMutationRejectedException implements Exception {
   final DateTime? enqueuedAt;
 
   @override
-  String toString() =>
-      reason == null || reason!.isEmpty
-          ? 'This change could not be saved and will not be retried automatically.'
-          : reason!;
+  String toString() => reason == null || reason!.isEmpty
+      ? 'This change could not be saved and will not be retried automatically.'
+      : reason!;
 }
 
 /// Thin client over the FINVERSE API.
@@ -269,8 +268,8 @@ class ApiClient implements BackgroundSyncClient {
     final stored = _tokens;
     if (stored == null) {
       pendingMutationCount.value = 0;
-    rejectedMutationCount.value = 0;
-    _rejectedMutations.clear();
+      rejectedMutationCount.value = 0;
+      _rejectedMutations.clear();
       return false;
     }
 
@@ -507,8 +506,8 @@ class ApiClient implements BackgroundSyncClient {
     final owner = _cacheOwner;
     if (owner == null) {
       pendingMutationCount.value = 0;
-    rejectedMutationCount.value = 0;
-    _rejectedMutations.clear();
+      rejectedMutationCount.value = 0;
+      _rejectedMutations.clear();
       return;
     }
     try {
@@ -953,7 +952,8 @@ class ApiClient implements BackgroundSyncClient {
 
   /// Schedules irreversible erasure after a 30-day recovery window.
   /// Credentials are cleared only after the server accepts the request.
-  Future<DateTime> requestAccountDeletion(String password, {String? mfaCode}) async {
+  Future<DateTime> requestAccountDeletion(String password,
+      {String? mfaCode}) async {
     final response = await _perform(
       'DELETE',
       '/auth/account',
@@ -1030,6 +1030,25 @@ class ApiClient implements BackgroundSyncClient {
     return SyncResult.fromJson(json);
   }
 
+  Future<Transaction> createManualTransaction({
+    required String requestId,
+    required String accountId,
+    required String postedAt,
+    required String description,
+    required String categorySlug,
+    required int amount,
+  }) async {
+    final json = await _send('POST', '/transactions/manual', {
+      'requestId': requestId,
+      'accountId': accountId,
+      'postedAt': postedAt,
+      'description': description,
+      'categorySlug': categorySlug,
+      'amount': amount,
+    }) as Map<String, dynamic>;
+    return Transaction.fromJson(json);
+  }
+
   Future<List<Account>> accounts() async {
     final json = await _get('/accounts') as List<dynamic>;
     return json
@@ -1067,8 +1086,9 @@ class ApiClient implements BackgroundSyncClient {
   }
 
   Future<StatementSummary> statementImportSummary(String id) async {
-    final json = await _get('/imports/statements/${Uri.encodeComponent(id)}/summary')
-        as Map<String, dynamic>;
+    final json =
+        await _get('/imports/statements/${Uri.encodeComponent(id)}/summary')
+            as Map<String, dynamic>;
     return StatementSummary.fromJson(json);
   }
 
@@ -1119,10 +1139,14 @@ class ApiClient implements BackgroundSyncClient {
       '/imports/statements/${Uri.encodeComponent(importId)}/rows/${Uri.encodeComponent(rowId)}/split',
       {'parts': parts},
     ) as List<dynamic>;
-    return json.whereType<Map<String, dynamic>>().map(StatementRow.fromJson).toList();
+    return json
+        .whereType<Map<String, dynamic>>()
+        .map(StatementRow.fromJson)
+        .toList();
   }
 
-  Future<StatementRow> mergeStatementRows(String importId, List<String> rowIds) async {
+  Future<StatementRow> mergeStatementRows(
+      String importId, List<String> rowIds) async {
     final json = await _send(
       'POST',
       '/imports/statements/${Uri.encodeComponent(importId)}/rows/merge',
@@ -1446,7 +1470,9 @@ class ApiClient implements BackgroundSyncClient {
   }
 
   Future<List<Reconciliation>> reconciliations({String? accountId}) async {
-    final query = accountId == null ? '' : '?account=${Uri.encodeQueryComponent(accountId)}';
+    final query = accountId == null
+        ? ''
+        : '?account=${Uri.encodeQueryComponent(accountId)}';
     final json = await _get('/reconciliations$query') as Map<String, dynamic>;
     return (json['reconciliations'] as List<dynamic>)
         .map((e) => Reconciliation.fromJson(e as Map<String, dynamic>))
@@ -1554,7 +1580,8 @@ class ApiClient implements BackgroundSyncClient {
     await _send('POST', '/split/groups/$groupId/invitations', {'email': email});
   }
 
-  Future<SplitInvitation> createSplitInvitation(String groupId, String email) async {
+  Future<SplitInvitation> createSplitInvitation(
+      String groupId, String email) async {
     final json = await _send(
       'POST',
       '/split/groups/$groupId/invitations',
@@ -1579,7 +1606,8 @@ class ApiClient implements BackgroundSyncClient {
     await _send('POST', '/split/invitations/$invitationId/decline');
   }
 
-  Future<void> revokeSplitInvitation(String groupId, String invitationId) async {
+  Future<void> revokeSplitInvitation(
+      String groupId, String invitationId) async {
     await _send('DELETE', '/split/groups/$groupId/invitations/$invitationId');
   }
 
@@ -1810,6 +1838,7 @@ class ApiClient implements BackgroundSyncClient {
       },
     );
   }
+
   Future<NotificationPreferences> notificationPreferences() async {
     final json =
         await _get('/notifications/preferences') as Map<String, dynamic>;

@@ -26,6 +26,7 @@ export class StatementImportWorker implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(StatementImportWorker.name);
   private timer?: NodeJS.Timeout;
   private running = false;
+  private stopped = false;
 
   constructor(
     @Inject(STATEMENT_IMPORT_STORE) private readonly imports: StatementImportStore,
@@ -40,29 +41,33 @@ export class StatementImportWorker implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    this.stopped = true;
     if (this.timer) clearInterval(this.timer);
   }
 
   /** Exposed for integration tests and dedicated worker invocations. */
   async runOnce(): Promise<number> {
-    if (this.running) return 0;
+    if (this.running || this.stopped) return 0;
     this.running = true;
     try {
-      const jobs = await this.imports.claim(25);
-      for (const job of jobs) {
+      let claimed = 0;
+      for (; claimed < 25 && !this.stopped; claimed += 1) {
+        // Claim only when processing can start, avoiding leases expiring in OCR queues.
+        const [job] = await this.imports.claim(1);
+        if (!job) break;
         try {
           await this.service.processQueued(job);
-        } catch (error) {
+        } catch {
           // processQueued is defensive and records parser failures itself. A
           // store or infrastructure failure is logged without source content;
           // the lease will expire and another worker can retry it.
-          this.logger.warn(`Statement job ${job.id} was not completed: ${safeError(error)}`);
+          this.logger.warn(`Statement job ${job.id} was not completed; its lease permits retry.`);
         }
       }
-      if (jobs.length === 25) setImmediate(() => void this.runOnce());
-      return jobs.length;
-    } catch (error) {
-      this.logger.warn(`Statement queue claim failed: ${safeError(error)}`);
+      if (claimed === 25 && !this.stopped) setImmediate(() => void this.runOnce());
+      return claimed;
+    } catch {
+      this.logger.warn('Statement queue claim failed; it will be retried.');
       return 0;
     } finally {
       this.running = false;
@@ -70,8 +75,3 @@ export class StatementImportWorker implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function safeError(error: unknown): string {
-  return (error instanceof Error ? error.message : 'unknown error')
-    .replace(/[\r\n]+/g, ' ')
-    .slice(0, 240);
-}

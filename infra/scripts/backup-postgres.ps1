@@ -5,6 +5,7 @@ param(
   [ValidatePattern('^age1[0-9a-z]+$')]
   [string]$AgeRecipient,
   [string]$Destination = (Join-Path $PSScriptRoot '..\backups'),
+  [ValidateRange(1, 3650)]
   [int]$RetentionDays = 35,
   [string]$AgeBinary = 'age'
 )
@@ -25,7 +26,7 @@ if ($runningOnWindows) {
   if ($LASTEXITCODE -ne 0) { throw 'Could not restrict backup directory permissions.' }
 }
 
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
 $archive = Join-Path $resolvedDestination "finverse-$stamp.dump.age"
 $plainArchive = Join-Path $resolvedDestination ".finverse-$stamp.dump"
 $temporaryArchive = Join-Path $resolvedDestination ".finverse-$stamp.dump.age"
@@ -69,11 +70,13 @@ if ($runningOnWindows) {
   }
 }
 
-$archiveBytes = [System.IO.File]::ReadAllBytes($archive)
-if ($archiveBytes.Length -eq 0) { throw 'Backup archive is empty.' }
-$ageHeader = [System.Text.Encoding]::ASCII.GetString(
-  $archiveBytes[0..([Math]::Min($archiveBytes.Length - 1, 23))]
-)
+$archiveStream = [System.IO.File]::OpenRead($archive)
+try {
+  $headerBytes = New-Object byte[] 24
+  $readCount = $archiveStream.Read($headerBytes, 0, $headerBytes.Length)
+  if ($readCount -eq 0) { throw 'Backup archive is empty.' }
+  $ageHeader = [System.Text.Encoding]::ASCII.GetString($headerBytes, 0, $readCount)
+} finally { $archiveStream.Dispose() }
 if (-not $ageHeader.StartsWith('age-encryption.org/v1')) {
   Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
   throw 'Backup archive does not have a valid age encryption header.'

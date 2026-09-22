@@ -11,6 +11,7 @@ import '../widgets/transaction_tile.dart';
 import 'transaction_feed_groups.dart';
 import 'transaction_detail_screen.dart';
 import 'statement_import_screen.dart';
+import 'manual_transaction_screen.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({
@@ -243,6 +244,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       appBar: AppBar(
         title: Text(l10n.transactionsTitle),
         actions: [
+          IconButton(
+            tooltip: 'Add income or expense',
+            icon: const Icon(Icons.add),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => ManualTransactionScreen(api: widget.api),
+            )),
+          ),
           IconButton(
             tooltip: 'Import statement',
             icon: const Icon(Icons.upload_file_outlined),

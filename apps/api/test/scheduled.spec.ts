@@ -215,3 +215,18 @@ describe('committedOutflow', () => {
     expect(committedOutflow([], '2026-01-01', 90)).toBe(0);
   });
 });
+
+describe('long-lived obligations', () => {
+  it('keeps weekly schedules visible after more than 1000 occurrences', () => {
+    const old = schedule({ cadence: 'weekly', startDate: '2000-01-03' });
+    expect(upcomingOccurrences(old, '2026-01-05', 21).map(o => o.date)).toEqual([
+      '2026-01-05', '2026-01-12', '2026-01-19', '2026-01-26',
+    ]);
+  });
+  it('preserves the original month-end anchor after many years', () => {
+    expect(nextOccurrence(schedule({ startDate: '1900-01-31' }), '2026-02-01')).toBe('2026-02-28');
+  });
+  it('rejects a commitment total that exceeds exact integer precision', () => {
+    expect(() => committedOutflow([schedule({ amount: -Number.MAX_SAFE_INTEGER })], '2026-01-01', 90)).toThrow();
+  });
+});

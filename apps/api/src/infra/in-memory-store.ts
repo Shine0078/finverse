@@ -143,6 +143,14 @@ function netWorthByCurrency(
 }
 
 export class InMemoryTransactionStore implements TransactionStore {
+  async insertIfAbsent(userId: string, transaction: Transaction): Promise<{ transaction: Transaction; inserted: boolean }> {
+    const rows = bucket(this.byUser, userId);
+    const existing = rows.find(row => row.id === transaction.id);
+    if (existing) return { transaction: existing, inserted: false };
+    rows.push({ ...transaction });
+    return { transaction: { ...transaction }, inserted: true };
+  }
+
   private readonly byUser = new Map<string, Transaction[]>();
 
   async list(userId: string, query: TransactionQuery = {}): Promise<Transaction[]> {

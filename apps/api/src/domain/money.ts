@@ -40,9 +40,9 @@ export function exponentOf(currency: string): number {
 }
 
 export function money(amount: number, currency = 'USD'): Money {
-  if (!Number.isInteger(amount)) {
+  if (!Number.isSafeInteger(amount)) {
     throw new TypeError(
-      `Money must be an integer in minor units, received ${amount}. ` +
+      `Money must be a safe integer in minor units, received ${amount}. ` +
         `Use majorToMinor() to convert a decimal amount.`,
     );
   }
@@ -103,9 +103,11 @@ export function isInflow(a: Money): boolean {
  * the number expects.
  */
 export function majorToMinor(major: number, currency = 'USD'): number {
+  if (!Number.isFinite(major)) throw new TypeError('Major units must be finite.');
   const factor = 10 ** exponentOf(currency);
   const scaled = Number((major * factor).toFixed(6));
-  return scaled < 0 ? -Math.round(-scaled) : Math.round(scaled);
+  const rounded = scaled < 0 ? -Math.round(-scaled) : Math.round(scaled);
+  return money(rounded, currency).amount;
 }
 
 /** 1234 USD -> 12.34. For display and export only — never feed this back into arithmetic. */

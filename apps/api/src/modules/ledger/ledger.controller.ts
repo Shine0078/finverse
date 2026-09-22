@@ -4,7 +4,7 @@ import { BadRequestException, Delete, HttpCode } from '@nestjs/common';
 
 import { loadConfig } from '../../config';
 import { transactionsToCsv } from '../../domain/exports/transactions-csv';
-import { formatMoney, money } from '../../domain/money';
+import { exponentOf, formatMoney, money } from '../../domain/money';
 import type { Transaction } from '../../domain/types';
 import { CurrentUser } from '../auth/auth.guard';
 import { LedgerService } from './ledger.service';
@@ -22,6 +22,7 @@ function presentAccount(account: Awaited<ReturnType<LedgerService['listAccounts'
   return {
     ...account,
     source: account.source ?? 'provider',
+    minorUnitExponent: exponentOf(account.currency),
     balanceFormatted: formatMoney(money(account.balanceCurrent, account.currency)),
     utilization:
       account.type === 'credit_card' && account.creditLimit
@@ -208,6 +209,11 @@ export class LedgerController {
   ) {
     await this.ledger.removeManualAccount(userId, id);
     return { removed: true };
+  }
+
+  @Post('transactions/manual')
+  async createManualTransaction(@CurrentUser() userId: string, @Body() body: Record<string, unknown>) {
+    return present(await this.ledger.createManualTransaction(userId, body));
   }
 
   @Get('transactions')

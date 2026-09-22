@@ -287,6 +287,24 @@ const TXN_COLUMNS = `
 const TXN_INSERT_COLUMNS = 22;
 
 export class PostgresTransactionStore implements TransactionStore {
+  async insertIfAbsent(userId: string, txn: Transaction): Promise<{ transaction: Transaction; inserted: boolean }> {
+    return withUserScope(this.pg, userId, async client => {
+      const result = await client.query(
+        `INSERT INTO transactions (id, user_id, account_id, provider_txn_id, posted_at,
+          amount, currency, raw_descriptor, normalized_descriptor, merchant,
+          category_slug, category_source, category_confidence, is_recurring, pending)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,false,false)
+         ON CONFLICT DO NOTHING`,
+        [txn.id, userId, txn.accountId, txn.providerTxnId, txn.postedAt, txn.amount,
+          txn.currency, txn.rawDescriptor, txn.normalizedDescriptor, txn.merchant,
+          txn.categorySlug, txn.categorySource, txn.categoryConfidence],
+      );
+      const stored = await fetchTransaction(client, userId, txn.id);
+      if (!stored) throw new Error('Manual transaction insert did not persist.');
+      return { transaction: stored, inserted: (result.rowCount ?? 0) === 1 };
+    });
+  }
+
   constructor(private readonly pg: Pool) {}
 
   async list(userId: string, query: TransactionQuery = {}): Promise<Transaction[]> {

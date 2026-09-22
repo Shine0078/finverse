@@ -92,6 +92,8 @@ export interface TransactionQuery {
 }
 
 export interface TransactionStore {
+  /** Insert once by immutable id; retries return the existing row without overwriting it. */
+  insertIfAbsent(userId: string, transaction: Transaction): Promise<{ transaction: Transaction; inserted: boolean }>;
   list(userId: string, query?: TransactionQuery): Promise<Transaction[]>;
   get(userId: string, id: string): Promise<Transaction | null>;
   /**

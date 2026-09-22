@@ -33,6 +33,7 @@ export async function reportCrash(
     const envelopeUrl = `${parsed.protocol}//${parsed.host}/api/${projectId}/store/?sentry_key=${encodeURIComponent(publicKey)}&sentry_version=7`;
     await fetch(envelopeUrl, {
       method: 'POST',
+      signal: AbortSignal.timeout(3_000),
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         message,
@@ -43,8 +44,6 @@ export async function reportCrash(
       }),
     });
   } catch (sendError) {
-    logger.warn(
-      `Crash report delivery failed: ${sendError instanceof Error ? sendError.message : 'unknown error'}`,
-    );
+    logger.warn('Crash report delivery failed.');
   }
 }

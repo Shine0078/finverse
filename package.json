@@ -12,7 +12,8 @@
     "node": ">=20"
   },
   "overrides": {
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "multer": "2.3.0"
   },
   "scripts": {
     "dev": "npm run dev --workspace @finverse/api",

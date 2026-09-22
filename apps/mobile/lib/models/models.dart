@@ -458,6 +458,7 @@ class Account {
     required this.type,
     required this.mask,
     required this.currency,
+    this.minorUnitExponent = 2,
     required this.balanceCurrent,
     required this.balanceFormatted,
     required this.source,
@@ -472,6 +473,7 @@ class Account {
         // Older offline-cache entries predate the currency field. Keep those
         // readable, then replace them on the next successful API refresh.
         currency: json['currency'] as String? ?? 'USD',
+        minorUnitExponent: json['minorUnitExponent'] as int? ?? 2,
         balanceCurrent: json['balanceCurrent'] as int,
         balanceFormatted: json['balanceFormatted'] as String,
         source: json['source'] as String? ?? 'provider',
@@ -483,6 +485,7 @@ class Account {
   final String type;
   final String mask;
   final String currency;
+  final int minorUnitExponent;
   final int balanceCurrent;
   final String balanceFormatted;
   final String source;

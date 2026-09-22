@@ -55,6 +55,7 @@ export class BankingService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BankingService.name);
   private webhookTimer?: NodeJS.Timeout;
   private drainingWebhooks = false;
+  private stopping = false;
 
   constructor(
     @Inject(BANK_LINK_STORE) private readonly links: BankLinkStore,
@@ -72,12 +73,14 @@ export class BankingService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit(): void {
+    this.stopping = false;
     this.webhookTimer = setInterval(() => void this.drainWebhookQueue(), 30_000);
     this.webhookTimer.unref();
     void this.drainWebhookQueue();
   }
 
   onModuleDestroy(): void {
+    this.stopping = true;
     if (this.webhookTimer) clearInterval(this.webhookTimer);
   }
 
@@ -440,7 +443,7 @@ export class BankingService implements OnModuleInit, OnModuleDestroy {
   }
 
   async drainWebhookQueue(): Promise<void> {
-    if (this.drainingWebhooks || !this.provider.configured) return;
+    if (this.stopping || this.drainingWebhooks || !this.provider.configured) return;
     this.drainingWebhooks = true;
     try {
       const jobs = await this.webhooks.claim(10);
@@ -456,7 +459,9 @@ export class BankingService implements OnModuleInit, OnModuleDestroy {
           this.logger.warn(`Plaid webhook sync ${terminal ? 'failed' : 'will retry'} (attempt ${job.attempts}).`);
         }
       }
-      if (jobs.length === 10) setImmediate(() => void this.drainWebhookQueue());
+      if (jobs.length === 10 && !this.stopping) setImmediate(() => void this.drainWebhookQueue());
+    } catch {
+      this.logger.warn('Bank webhook queue is unavailable; pending work will be retried.');
     } finally {
       this.drainingWebhooks = false;
     }

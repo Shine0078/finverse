@@ -1,13 +1,14 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { categorizeDescriptor, coverageRate, ruleFromCorrection } from '../../domain/categorization/categorize';
 import { UserCorrectionClassifier } from '../../domain/categorization/user-correction-classifier';
 import { normalizeDescriptor } from '../../domain/categorization/normalize';
-import { isKnownCategory } from '../../domain/categories';
+import { getCategory, isKnownCategory } from '../../domain/categories';
 import { detectSubscriptions } from '../../domain/insights/subscriptions';
 import { interpretTransactionSearch } from '../../domain/transactions/natural-search';
 import { normalizeTransactionTags } from '../../domain/transactions/tags';
+import { addDays, assertIsoDate } from '../../domain/dates';
 import { FinanceEventBus } from '../../infra/events/finance-event-bus';
 import type { Account, CategorizationRule, RawTransaction, Transaction } from '../../domain/types';
 import {
@@ -148,6 +149,43 @@ export class LedgerService {
       isRecurring: false,
       pending: raw.pending,
     };
+  }
+
+  async createManualTransaction(userId: string, body: Record<string, unknown>): Promise<Transaction> {
+    if (!body || typeof body !== 'object') throw new BadRequestException('Enter transaction details.');
+    const { requestId, accountId, postedAt, amount, categorySlug } = body;
+    const description = typeof body.description === 'string' ? body.description.trim() : '';
+    if (typeof requestId !== 'string' || !/^[a-zA-Z0-9_-]{20,100}$/.test(requestId)) {
+      throw new BadRequestException('A valid requestId is required for safe retries.');
+    }
+    if (typeof accountId !== 'string') throw new BadRequestException('Choose an account.');
+    const account = await this.accounts.get(userId, accountId);
+    if (!account || account.source !== 'manual') throw new NotFoundException('Choose one of your manual accounts.');
+    if (!description || description.length > 200) throw new BadRequestException('Description must contain 1 to 200 characters.');
+    try { assertIsoDate(postedAt as string); } catch { throw new BadRequestException('Choose a real calendar date.'); }
+    if ((postedAt as string) > addDays(this.clock.today(), 1)) throw new BadRequestException('Use a schedule for a future payment.');
+    if (!Number.isSafeInteger(amount) || amount === 0 || Math.abs(amount as number) > 10_000_000_000_000) {
+      throw new BadRequestException('Enter a non-zero amount in exact minor units.');
+    }
+    const category = typeof categorySlug === 'string' ? getCategory(categorySlug) : undefined;
+    if (!category || !['income', 'expense'].includes(category.kind)
+      || ((amount as number) > 0) !== (category.kind === 'income')) {
+      throw new BadRequestException('Choose an income or expense category matching the amount.');
+    }
+    const id = 'manual_' + createHash('sha256').update(userId + ':' + requestId).digest('hex');
+    const transaction: Transaction = {
+      id, accountId, providerTxnId: id, postedAt: postedAt as string, amount: amount as number,
+      currency: account.currency, rawDescriptor: description,
+      normalizedDescriptor: normalizeDescriptor(description), merchant: description,
+      categorySlug: category.slug, categorySource: 'user_manual', categoryConfidence: 1,
+      isRecurring: false, pending: false,
+    };
+    const { transaction: stored, inserted } = await this.transactions.insertIfAbsent(userId, transaction);
+    for (const key of ['accountId', 'postedAt', 'amount', 'rawDescriptor', 'categorySlug'] as const) {
+      if (stored[key] !== transaction[key]) throw new ConflictException('This request was already saved with different details. Refresh transactions before trying again.');
+    }
+    if (inserted) this.events.publish({ type: 'TransactionImported', userId, at: this.clock.now().toISOString(), inserted: 1 });
+    return stored;
   }
 
   listAccounts(userId: string): Promise<Account[]> {

@@ -10,7 +10,8 @@
  * Pure: no store, no clock. Every date is passed in.
  */
 
-import { addMonths, daysInMonth, toUtcDate } from '../dates';
+import { assertIsoDate, addMonths, daysInMonth, toUtcDate } from '../dates';
+import { money } from '../money';
 import type { IsoDate } from '../types';
 
 export type ScheduleCadence = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly';
@@ -106,9 +107,8 @@ export function occurrenceAt(schedule: ScheduledTransaction, index: number): Iso
 /**
  * Upcoming occurrences within `days` of `today`.
  *
- * Walks forward from the start rather than solving for an index, because the
- * month-clamping above makes the mapping from date to index non-uniform. The
- * loop is bounded by the horizon, so it stays cheap.
+ * Starts near today and keeps the original calendar anchor. The bounded scan
+ * depends on the requested horizon rather than the age of the schedule.
  */
 export function upcomingOccurrences(
   schedule: ScheduledTransaction,
@@ -124,7 +124,15 @@ export function upcomingOccurrences(
   // unbounded loop here would be a denial of service via a large `days`.
   const maxIterations = 1_000;
 
-  for (let index = 0; index < maxIterations; index += 1) {
+  const dayStep = DAYS_PER_CADENCE[schedule.cadence];
+  const elapsedDays = Math.floor((toUtcDate(today).getTime() - toUtcDate(schedule.startDate).getTime()) / 86_400_000);
+  const elapsedMonths = (Number(today.slice(0, 4)) - Number(schedule.startDate.slice(0, 4))) * 12
+    + Number(today.slice(5, 7)) - Number(schedule.startDate.slice(5, 7));
+  // Start near today, retaining the original anchor for month-end clamping.
+  const firstIndex = Math.max(0, dayStep > 0
+    ? Math.floor(elapsedDays / dayStep)
+    : Math.floor(elapsedMonths / MONTHS_PER_CADENCE[schedule.cadence]) - 1);
+  for (let index = firstIndex; index < firstIndex + maxIterations; index += 1) {
     const date = occurrenceAt(schedule, index);
 
     if (date > horizon) break;
@@ -173,9 +181,11 @@ export function validateSchedule(input: {
   reminderDays?: number;
 }): ScheduleValidation {
   const problems: string[] = [];
-  const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+  const validDate = (value: unknown): boolean => {
+    try { assertIsoDate(value as string); return true; } catch { return false; }
+  };
 
-  const name = (input.name ?? '').trim();
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
   if (name.length === 0) problems.push('Give the schedule a name.');
   if (name.length > MAX_SCHEDULE_NAME_LENGTH) {
     problems.push(`Use ${MAX_SCHEDULE_NAME_LENGTH} characters or fewer.`);
@@ -189,12 +199,12 @@ export function validateSchedule(input: {
     problems.push(`Cadence must be one of: ${SCHEDULE_CADENCES.join(', ')}.`);
   }
 
-  if (!input.startDate || !isoDate.test(input.startDate)) {
+  if (!validDate(input.startDate)) {
     problems.push('startDate must be a calendar date (YYYY-MM-DD).');
   }
 
   if (input.endDate !== undefined && input.endDate !== null) {
-    if (!isoDate.test(input.endDate)) {
+    if (!validDate(input.endDate)) {
       problems.push('endDate must be a calendar date (YYYY-MM-DD).');
     } else if (input.startDate && input.endDate < input.startDate) {
       // Produces a schedule with no occurrences, which is always a mistake.
@@ -220,7 +230,7 @@ export function committedOutflow(
 
   for (const schedule of schedules) {
     if (schedule.amount >= 0) continue;
-    total += Math.abs(schedule.amount) * upcomingOccurrences(schedule, today, days).length;
+    total = money(total + Math.abs(schedule.amount) * upcomingOccurrences(schedule, today, days).length, schedule.currency).amount;
   }
 
   return total;

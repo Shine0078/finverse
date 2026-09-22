@@ -18,7 +18,7 @@ import { checkWebBundleBaseHref } from './infra/http/web-bundle';
 import { assertRestrictedRuntimeRole, parseAppRole, provisionAppRole } from './infra/postgres/app-role';
 import { closePool, getAppPool, getPool } from './infra/postgres/pool';
 import { runMigrations } from './infra/postgres/migrate';
-import { reportCrash } from './infra/observability/crash-reporter';
+import { installFatalErrorHandlers } from './infra/observability/fatal-errors';
 import {
   DEVELOPMENT_QA_EMAIL,
   ensureDevelopmentQaAccount,
@@ -182,11 +182,6 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-process.on('uncaughtException', (error) => {
-  void reportCrash(config.crashReporting, error, 'uncaughtException');
-});
-process.on('unhandledRejection', (reason) => {
-  void reportCrash(config.crashReporting, reason, 'unhandledRejection');
-});
+installFatalErrorHandlers(config.crashReporting);
 
 void bootstrap();

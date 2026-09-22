@@ -131,17 +131,25 @@ export class ScheduledService {
 
     // Validate the merged result, not the patch: a partial update can still
     // produce an invalid schedule, such as an end date before an unchanged start.
-    const merged = { ...existing, ...patch };
+    if (patch.accountId !== undefined && patch.accountId !== existing.accountId) {
+      throw new BadRequestException('A schedule account cannot be changed. Create a new schedule for the other account.');
+    }
+    const allowed = ['name', 'amount', 'categorySlug', 'cadence', 'startDate', 'endDate', 'reminderDays'];
+    const safePatch = Object.fromEntries(Object.entries(patch).filter(([key]) => allowed.includes(key)));
+    const merged = { ...existing, ...safePatch };
     const check = validateSchedule(merged);
     if (!check.ok) {
       throw new BadRequestException({ message: 'Schedule rejected.', problems: check.problems });
     }
 
+    if (!isKnownCategory(merged.categorySlug)) {
+      throw new BadRequestException('Unknown schedule category.');
+    }
     const updated = await this.schedules.update(userId, id, {
-      ...patch,
-      // Currency stays tied to the account.
+      ...safePatch,
+      name: merged.name.trim(),
       currency: existing.currency,
-    } as Partial<ScheduledTransaction>);
+    });
 
     if (!updated) throw new NotFoundException('No such schedule.');
 
@@ -173,7 +181,7 @@ export class ScheduledService {
   async upcoming(
     userId: string,
     days: number,
-  ): Promise<{ entries: UpcomingEntry[]; committedOutflow: number; horizonDays: number }> {
+  ): Promise<{ entries: UpcomingEntry[]; committedOutflow: number | null; currency: string | null; committedOutflowByCurrency: Record<string, number>; horizonDays: number }> {
     if (!Number.isSafeInteger(days) || days < 1 || days > MAX_HORIZON_DAYS) {
       throw new BadRequestException(`days must be between 1 and ${MAX_HORIZON_DAYS}.`);
     }
@@ -201,9 +209,17 @@ export class ScheduledService {
       )
       .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
 
+    const currencies = [...new Set(schedules.map((schedule) => schedule.currency))].sort();
+    const committedOutflowByCurrency = Object.fromEntries(currencies.map((currency) => [
+      currency,
+      committedOutflow(schedules.filter((schedule) => schedule.currency === currency), today, days),
+    ]));
+    const currency = currencies.length === 1 ? currencies[0]! : currencies.length === 0 ? 'USD' : null;
     return {
       entries,
-      committedOutflow: committedOutflow(schedules, today, days),
+      currency,
+      committedOutflow: currency === null ? null : committedOutflowByCurrency[currency] ?? 0,
+      committedOutflowByCurrency,
       horizonDays: days,
     };
   }

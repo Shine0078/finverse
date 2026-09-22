@@ -36,60 +36,23 @@ if [[ ! -f "${ENV_FILE}" ]]; then
   exit 1
 fi
 
-# A Cloud Run process without Plaid credentials is healthy but cannot connect
-# any bank. Fail before building or deploying that misleading state. Values
-# are inspected only for presence/placeholders; never print them.
-yaml_value() {
-  local key="$1"
-  awk -v key="${key}" '
-    $0 ~ "^" key ":[[:space:]]*" {
-      value = $0
-      sub("^" key ":[[:space:]]*", "", value)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-      gsub(/^"|"$/, "", value)
-      print value
-      exit
-    }
-  ' "${ENV_FILE}"
-}
-
-for key in PLAID_CLIENT_ID PLAID_SECRET PLAID_ENVIRONMENT PLAID_COUNTRIES PLAID_WEBHOOK_URL PLAID_WEB_REDIRECT_URI BANK_TOKEN_ENCRYPTION_KEY; do
-  value="$(yaml_value "${key}")"
-  case "${value}" in
-    ""|*REPLACE_*|REPLACE_WITH_*|*replace-me*|replace-me)
-      echo "${key} must be configured in ${ENV_FILE}; refusing a bank-disabled deployment." >&2
-      exit 1
-      ;;
-  esac
-done
-if [[ "$(yaml_value PLAID_ENVIRONMENT)" != "production" ]]; then
-  echo "PLAID_ENVIRONMENT must be production for this Cloud Run deployment." >&2
-  exit 1
-fi
-
-# The migration job needs the schema-owner URL; the serving process must not
-# receive it. Build a private, short-lived runtime env file containing only the
-# least-privileged application URL and the ordinary service settings.
-umask 077
-RUNTIME_ENV_FILE="$(mktemp /tmp/finverse-runtime-env.XXXXXX)"
-case "${RUNTIME_ENV_FILE}" in
-  /tmp/finverse-runtime-env.*) ;;
-  *) echo "Unexpected temporary env path: ${RUNTIME_ENV_FILE}" >&2; exit 1 ;;
-esac
-cleanup_runtime_env() {
-  if [[ -n "${RUNTIME_ENV_FILE:-}" && -f "${RUNTIME_ENV_FILE}" && "${RUNTIME_ENV_FILE}" == /tmp/finverse-runtime-env.* ]]; then
-    rm -f -- "${RUNTIME_ENV_FILE}"
-  fi
-}
-trap cleanup_runtime_env EXIT
-grep -Ev '^(DATABASE_URL|GIT_SHA):' "${ENV_FILE}" > "${RUNTIME_ENV_FILE}"
-if ! grep -q '^DATABASE_APP_URL:' "${RUNTIME_ENV_FILE}"; then
-  echo "DATABASE_APP_URL is required in ${ENV_FILE}." >&2
-  exit 1
-fi
-
+# Deploy only committed application files. Untracked workstation files and
+# unrelated projects never enter the upload, even if ignore rules regress.
+git diff --quiet HEAD -- || { echo "Commit reviewed changes before deploying." >&2; exit 1; }
 SHA="$(git rev-parse HEAD)"
 IMAGE_TAG="${IMAGE_REPOSITORY}:${SHA}"
+umask 077
+WORK_DIR="$(mktemp -d /tmp/finverse-release.XXXXXX)"
+cleanup_release() {
+  case "${WORK_DIR:-}" in /tmp/finverse-release.*) rm -rf -- "${WORK_DIR}" ;; esac
+}
+trap cleanup_release EXIT
+RUNTIME_ENV_FILE="${WORK_DIR}/runtime.json"
+MIGRATION_ENV_FILE="${WORK_DIR}/migration.json"
+node infra/scripts/cloudrun-env.mjs "${ENV_FILE}" "${SHA}" "${RUNTIME_ENV_FILE}" "${MIGRATION_ENV_FILE}"
+mkdir "${WORK_DIR}/source"
+git archive --format=tar HEAD -- package.json package-lock.json packages/contracts apps/api apps/mobile Dockerfile.public cloudbuild.yaml .dockerignore .gcloudignore |
+  tar -xf - -C "${WORK_DIR}/source"
 
 gcloud artifacts repositories describe "${REPOSITORY}" \
   --location="${REGION}" --project="${PROJECT_ID}" >/dev/null 2>&1 || \
@@ -99,9 +62,9 @@ gcloud artifacts repositories describe "${REPOSITORY}" \
 
 # Always build the checked-out commit. A mutable tag must never let old bytes
 # inherit the current runtime GIT_SHA and pass the identity readback.
-gcloud builds submit . \
+gcloud builds submit "${WORK_DIR}/source" \
   --project="${PROJECT_ID}" \
-  --config=cloudbuild.yaml \
+  --config="${WORK_DIR}/source/cloudbuild.yaml" \
   --substitutions="_IMAGE=${IMAGE_TAG},_GIT_SHA=${SHA}"
 
 DIGEST="$(gcloud artifacts docker images describe "${IMAGE_TAG}" \
@@ -114,24 +77,34 @@ IMAGE="${IMAGE_REPOSITORY}@${DIGEST}"
 echo "Deploying immutable image ${IMAGE}."
 
 # Migrations run once as a Cloud Run Job with the schema-owner URL. The
-# application service receives the same env file but never runs migrations on
+# application service receives only runtime settings and never runs migrations on
 # boot. The job is idempotent and provisions the restricted RLS role.
 gcloud run jobs deploy "${SERVICE}-migrate" \
   --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" \
   --command=node --args=dist/infra/postgres/migrate.js \
-  --env-vars-file="${ENV_FILE}" --max-retries=1
+  --env-vars-file="${MIGRATION_ENV_FILE}" --max-retries=1
 gcloud run jobs execute "${SERVICE}-migrate" \
   --region="${REGION}" --project="${PROJECT_ID}" --wait
 
+# Keep existing traffic until the candidate passes readiness and identity checks.
+PREVIOUS_TRAFFIC="$(gcloud run services describe "${SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format=json 2>/dev/null |
+  node -e 'let input="";process.stdin.on("data",d=>input+=d);process.stdin.on("end",()=>{if(!input)return;const t=JSON.parse(input).status?.traffic??[];process.stdout.write(t.filter(x=>x.percent>0&&x.revisionName).map(x=>x.revisionName+"="+x.percent).join(","));});')" || PREVIOUS_TRAFFIC=""
+RELEASE_TAG="review-${SHA:0:8}"
 gcloud run deploy "${SERVICE}" \
   --image="${IMAGE}" --region="${REGION}" --project="${PROJECT_ID}" \
   --allow-unauthenticated --port=3000 --memory=1Gi --max-instances=1 \
+  --no-traffic --tag="${RELEASE_TAG}" \
+  --min-instances=1 --no-cpu-throttling \
   --env-vars-file="${RUNTIME_ENV_FILE}"
 
 URL="$(gcloud run services describe "${SERVICE}" --region="${REGION}" \
   --project="${PROJECT_ID}" --format='value(status.url)')"
+CANONICAL_URL="${URL}"
+REVISION="$(gcloud run services describe "${SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format='value(status.latestReadyRevisionName)')"
+URL="$(gcloud run services describe "${SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --format=json |
+  node -e 'let input="";process.stdin.on("data",d=>input+=d);process.stdin.on("end",()=>{const tag=process.argv[1];const entry=JSON.parse(input).status.traffic.find(x=>x.tag===tag);if(!entry?.url)process.exit(1);process.stdout.write(entry.url);});' "${RELEASE_TAG}")"
 echo
-echo "FINVERSE is live at: ${URL}/app/"
+echo "Checking candidate deployment: ${URL}/app/"
 echo "Health check:        ${URL}/api/readiness"
 echo "Identity:            ${URL}/api/version"
 READINESS="$(curl --fail --silent --show-error --max-time 20 "${URL}/api/readiness")"
@@ -149,5 +122,16 @@ curl --fail --silent --show-error --max-time 20 "${URL}/api/webauthn/status" >/d
 APP="$(curl --fail --silent --show-error --max-time 20 "${URL}/app/")"
 echo "${APP}" | grep -F '<base href="/app/">' >/dev/null
 echo
-echo "Set CORS_ORIGINS to ${URL} in ${ENV_FILE}, then rerun this script once"
-echo "to replace the temporary CORS origin with the final Cloud Run origin."
+# Promotion is reversible; database migrations are never automatically reversed.
+gcloud run services update-traffic "${SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --to-revisions="${REVISION}=100"
+if ! curl --fail --silent --show-error --max-time 30 "${CANONICAL_URL}/api/version" |
+  node -e 'let input="";process.stdin.on("data",d=>input+=d);process.stdin.on("end",()=>{try{const v=JSON.parse(input);if(v.service!=="finverse-api"||![process.argv[1],process.argv[1].slice(0,7)].includes(v.sha))process.exit(1);}catch{process.exit(1);}});' "${SHA}"; then
+  if [[ -n "${PREVIOUS_TRAFFIC}" ]]; then
+    gcloud run services update-traffic "${SERVICE}" --region="${REGION}" --project="${PROJECT_ID}" --to-revisions="${PREVIOUS_TRAFFIC}"
+  fi
+  echo "Production identity check failed; prior traffic was restored when available." >&2
+  exit 1
+fi
+echo "Public deployment checks passed: ${CANONICAL_URL}/app/"
+echo "Rollback traffic target: ${PREVIOUS_TRAFFIC:-none (first deployment)}"
+echo "Next verify sign-in, session persistence, and a statement import in the deployed app."

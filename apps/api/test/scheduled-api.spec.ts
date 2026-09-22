@@ -337,4 +337,61 @@ describe('schedules API', () => {
 
     expect(after.body.count).toBe(before.body.count);
   });
+  it('rejects changing a schedule to an account owned by another user', async () => {
+    const alice = await signedInUser();
+    const bob = await signedInUser();
+    const bobAccount = await request(http).post('/api/accounts/manual')
+      .set('Authorization', 'Bearer ' + bob.token)
+      .send({ name: 'Private account', type: 'cash', currency: 'USD', balanceCurrent: 0 }).expect(201);
+    expect(bobAccount.body.id).not.toBe(alice.accountId);
+    const created = await create(alice).expect(201);
+    await request(http).patch('/api/schedules/' + created.body.id)
+      .set('Authorization', 'Bearer ' + alice.token)
+      .send({ accountId: bobAccount.body.id }).expect(400);
+    const listed = await request(http).get('/api/schedules')
+      .set('Authorization', 'Bearer ' + alice.token).expect(200);
+    expect(listed.body.schedules[0].accountId).toBe(alice.accountId);
+  });
+
+  it('rejects impossible dates and malformed names without writing a schedule', async () => {
+    const user = await signedInUser();
+    await create(user, { startDate: '2026-02-31' }).expect(400);
+    await create(user, { name: 42 }).expect(400);
+    const listed = await request(http).get('/api/schedules')
+      .set('Authorization', 'Bearer ' + user.token).expect(200);
+    expect(listed.body.count).toBe(0);
+  });
+
+  it('validates categories on updates and prevents archive-field injection', async () => {
+    const user = await signedInUser();
+    const created = await create(user).expect(201);
+    await request(http).patch('/api/schedules/' + created.body.id)
+      .set('Authorization', 'Bearer ' + user.token)
+      .send({ categorySlug: 'nonexistent-category' }).expect(400);
+    const updated = await request(http).patch('/api/schedules/' + created.body.id)
+      .set('Authorization', 'Bearer ' + user.token)
+      .send({ name: '  Updated rent  ', archivedAt: '2026-01-01' }).expect(200);
+    expect(updated.body.name).toBe('Updated rent');
+    expect(updated.body.archivedAt).toBeNull();
+  });
+
+  it('reports CAD commitments in CAD and separates mixed-currency totals', async () => {
+    const user = await signedInUser();
+    const account = await request(http).post('/api/accounts/manual')
+      .set('Authorization', 'Bearer ' + user.token)
+      .send({ name: 'CAD cash', type: 'cash', currency: 'CAD', balanceCurrent: 0 }).expect(201);
+    await create(user, { accountId: account.body.id, amount: -1000 }).expect(201);
+    const cad = await request(http).get('/api/schedules/upcoming?days=1')
+      .set('Authorization', 'Bearer ' + user.token).expect(200);
+    expect(cad.body.currency).toBe('CAD');
+    expect(cad.body.committedOutflow).toBe(1000);
+    await create(user, { amount: -2000 }).expect(201);
+    const mixed = await request(http).get('/api/schedules/upcoming?days=1')
+      .set('Authorization', 'Bearer ' + user.token).expect(200);
+    expect(mixed.body.currency).toBeNull();
+    expect(mixed.body.committedOutflow).toBeNull();
+    expect(mixed.body.committedOutflowFormatted).toBeNull();
+    expect(mixed.body.committedOutflowByCurrency).toEqual({ CAD: 1000, USD: 2000 });
+  });
+
 });

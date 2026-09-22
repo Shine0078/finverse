@@ -50,7 +50,8 @@ export class ScheduledController {
     const result = await this.schedules.upcoming(userId, Number(days));
     return {
       ...result,
-      committedOutflowFormatted: formatMoney(money(result.committedOutflow, 'USD')),
+      committedOutflowFormatted: result.committedOutflow === null || result.currency === null
+        ? null : formatMoney(money(result.committedOutflow, result.currency)),
       entries: result.entries.map((entry) => ({
         ...entry,
         amountFormatted: formatMoney(money(entry.amount, entry.currency)),

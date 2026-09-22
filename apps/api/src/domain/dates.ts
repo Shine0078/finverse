@@ -11,7 +11,9 @@ import type { DateRange, IsoDate } from './types';
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function assertIsoDate(value: string): asserts value is IsoDate {
-  if (!ISO_DATE.test(value)) {
+  const parsed = typeof value === 'string' && ISO_DATE.test(value)
+    ? new Date(value + 'T00:00:00.000Z') : null;
+  if (!parsed || !Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
     throw new TypeError(`Expected an ISO date (YYYY-MM-DD), received "${value}"`);
   }
 }
@@ -57,6 +59,7 @@ export function isWithin(date: IsoDate, range: DateRange): boolean {
 }
 
 export function startOfMonth(date: IsoDate): IsoDate {
+  assertIsoDate(date);
   return `${date.slice(0, 7)}-01`;
 }
 
@@ -107,11 +110,13 @@ export function weekRange(date: IsoDate): DateRange {
 }
 
 export function yearRange(date: IsoDate): DateRange {
+  assertIsoDate(date);
   const year = date.slice(0, 4);
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }
 
 /** `2026-03` — the grouping key for month-over-month comparisons. */
 export function monthKey(date: IsoDate): string {
+  assertIsoDate(date);
   return date.slice(0, 7);
 }
