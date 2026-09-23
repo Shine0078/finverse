@@ -10,6 +10,13 @@ out/
 .next/
 .cache/
 
+# Foreign-project artifacts (moved to their own repos)
+samuel-os-site.tgz
+samuel-os-v*.tar.gz
+tmp/
+output/pdf/samuel_*.pdf
+output/pdf/goal_*.pdf
+
 # Environment
 .env
 .env.local
