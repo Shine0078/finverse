@@ -879,7 +879,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               children: [
                 SizedBox(
                   width: tileWidth,
-                  height: 128,
+                  height: 70,
                   child: FinSummaryTile(
                     label: l10n.analyticsIncome,
                     value: insights.income,
@@ -890,7 +890,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 SizedBox(
                   width: tileWidth,
-                  height: 128,
+                  height: 70,
                   child: FinSummaryTile(
                     label: l10n.analyticsNetExpenses,
                     value: insights.expenses,
@@ -901,7 +901,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 SizedBox(
                   width: tileWidth,
-                  height: 128,
+                  height: 70,
                   child: FinSummaryTile(
                     label: l10n.dashboardNetCashFlow,
                     value: insights.netCashFlow,
@@ -914,7 +914,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 SizedBox(
                   width: tileWidth,
-                  height: 128,
+                  height: 70,
                   child: FinSummaryTile(
                     label: l10n.analyticsSavingsRate,
                     value: insights.savingsRate,

@@ -32,7 +32,7 @@ class FinSummaryTile extends StatelessWidget {
       container: true,
       label: '$label: $value${supporting == null ? '' : ', $supporting'}',
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 116),
+        constraints: const BoxConstraints(minHeight: 54),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
@@ -47,63 +47,60 @@ class FinSummaryTile extends StatelessWidget {
             ],
           ),
           child: Padding(
-            padding: const EdgeInsets.all(FinSpace.md),
+            padding: const EdgeInsets.symmetric(
+              horizontal: FinSpace.md,
+              vertical: FinSpace.xs,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Row(
                   children: [
                     if (icon != null) ...[
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.10),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                        child: Icon(icon, size: 17, color: color),
-                      ),
-                      const SizedBox(width: FinSpace.sm),
+                      Icon(icon, size: 14, color: color),
+                      const SizedBox(width: FinSpace.xs),
                     ],
                     Expanded(
                       child: Text(
                         label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelMedium?.copyWith(
+                        style: theme.textTheme.labelSmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
+                    if (supporting != null)
+                      Flexible(
+                        child: Text(
+                          supporting!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontSize: 11,
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
-                const SizedBox(height: FinSpace.sm),
+                const SizedBox(height: 2),
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
                     value,
                     maxLines: 1,
-                    style: theme.textTheme.titleLarge?.copyWith(
+                    style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.25,
                       color: theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
-                if (supporting != null) ...[
-                  const SizedBox(height: FinSpace.xs),
-                  Text(
-                    supporting!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
               ],
             ),
           ),

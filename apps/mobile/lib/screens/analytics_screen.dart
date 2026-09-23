@@ -561,7 +561,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             for (final value in values)
               SizedBox(
                 width: width,
-                height: 128,
+                height: 70,
                 child: FinSummaryTile(
                   label: value.$1,
                   value: value.$2,
