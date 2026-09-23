@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <base href="/starter/app/">
+  <base href="/app/">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="FINVERSE - privacy-first personal finance.">
+  <meta name="color-scheme" content="light">
 
   <!--
     viewport-fit=cover lets the app paint under the notch and home indicator
@@ -21,8 +22,9 @@
     toolbar; without it, "Add to Home Screen" produces a bookmark that opens in
     the browser rather than something that behaves like an app.
 
-    `black-translucent` lets the Flutter UI extend behind the status bar, which
-    is what the viewport-fit above is for.
+    The default status-bar style keeps system chrome readable against the
+    light app shell while viewport-fit still lets the Flutter UI use the full
+    screen on supported devices.
 
     iOS ignores manifest.json for the home-screen icon and title, so both are
     declared here as well. They are not duplication for its own sake - drop
@@ -30,12 +32,12 @@
   -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FINVERSE">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="apple-touch-icon" sizes="512x512" href="icons/Icon-512.png">
 
-  <meta name="theme-color" content="#2F6DF6">
+  <meta name="theme-color" content="#FFFFFF">
 
   <link rel="icon" type="image/png" href="favicon.png"/>
 
@@ -43,16 +45,13 @@
   <link rel="manifest" href="manifest.json">
 
   <style>
-    /* Matches the app's seed colour so the launch is a colour, not a white
-       flash, on a phone that has just come off a dark home screen. */
+    /* Keep the first paint consistent with the light-only app shell. */
     body {
       margin: 0;
-      background-color: #0B1220;
-      color: #E6EDF7;
+      background-color: #FFFFFF;
+      color: #17213A;
+      color-scheme: light;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    @media (prefers-color-scheme: light) {
-      body { background-color: #F7F9FC; color: #1B2436; }
     }
 
     /*
@@ -167,7 +166,7 @@
         if (bootHint) {
           bootHint.innerHTML =
             'FINVERSE is taking longer than expected to start.<br>' +
-            '<a href="" style="color:#7FA9FF">Reload</a>';
+            '<a href="" style="color:#0E7C66">Reload</a>';
         }
       }, 12000);
     })();
