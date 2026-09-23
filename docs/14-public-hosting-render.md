@@ -26,7 +26,7 @@ Response headers show `x-powered-by: Express` with no NestJS routes and no
 `/api` surface. The first request took 31 s, which is the free-tier cold start,
 so the service is awake — it is running the wrong deploy.
 
-Consequence: the public PWA at `https://shine0078.github.io/starter/app/`
+Consequence: the public PWA at `https://shine0078.github.io/finverse/app/`
 renders correctly but **cannot authenticate**. A request to `/api/auth/login`
 from that origin fails, and the user sees "Couldn't reach the server. Check your
 connection."

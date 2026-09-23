@@ -110,10 +110,12 @@ Run against the mock ledger on 2026-08-07:
 ## What this slice is not
 
 - **Not connected to a real bank.** Gated on commercial agreements, not code.
-- **Not authenticated.** `x-user-id` is a development header and must not survive
-  into a deployed build.
 - **Not the product UI.** The page at `localhost:3000` is a developer dashboard.
   The product is the Flutter app in `apps/mobile`.
+- **Historical note.** This slice predates the production auth system. Accounts
+  are now protected by bearer-token sessions, TOTP MFA and passkey support; the
+  retired `x-user-id` development header no longer exists anywhere in the
+  request path. The test suite has grown well past the 184 tests recorded here.
 
 ## Bugs this slice caught
 

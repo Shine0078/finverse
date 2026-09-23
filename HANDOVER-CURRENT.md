@@ -20,7 +20,7 @@
 > It was blamed in turn on Flutter, on Safari, on a service worker, and on the
 > app shell's localization, before anyone compared the two strings.
 >
-> **Evidence it is fixed** — `https://shine0078.github.io/starter/app/` opened
+> **Evidence it is fixed** — `https://shine0078.github.io/finverse/app/` opened
 > in a *visible* browser tab (`document.hidden: false`):
 >
 > | Check | Result |

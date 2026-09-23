@@ -53,8 +53,9 @@ XLSX, text PDFs, and PNG/JPEG/WEBP/TIFF/BMP images up to 10 MiB.
    purchases or a combined posting. Splits must sum exactly to the original
    amount; parent rows are retained as excluded audit records.
 5. `POST /api/imports/statements/:id/approve` atomically creates the normal
-   import batch and ledger transactions. Approval is refused while any row is
-   still `needs_review`.
+   import batch and ledger transactions. Rows still marked `needs_review` are
+   resolved as part of approval — valid rows move to `include`, invalid or
+   duplicate rows to `exclude` — before the batch is finalized.
 6. `GET .../:id/summary` reports the included income, expenses, savings,
    category totals, date range, recurring count, duplicate count, and unusual
    count. Approved rows consequently appear in the existing transactions,

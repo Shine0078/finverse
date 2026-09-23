@@ -182,7 +182,7 @@ FINVERSE currently has conflicting deployment paths.
 
 The GitHub Pages PWA:
 
-`https://shine0078.github.io/starter/app/`
+`https://shine0078.github.io/finverse/app/`
 
 was verified to load its UI.
 

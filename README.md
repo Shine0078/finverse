@@ -3,7 +3,7 @@
 An AI-powered personal finance platform. Privacy-first, offline-capable,
 automated.
 
-[`MISSION.md`](MISSION.md) is the product brief. [`docs/`](docs/) turns it into
+[`MISSION1.md`](MISSION1.md) and [`MISSION2.md`](MISSION2.md) are the product briefs. [`docs/`](docs/) turns them into
 a plan. This README tells you how to run what exists.
 
 **Status: launch engineering in progress.** Current verified state is [`STATUS.md`](STATUS.md). Historical investigation lives in [`HANDOVER-VERIFIED.md`](HANDOVER-VERIFIED.md) and older handover files. The API and Android app include

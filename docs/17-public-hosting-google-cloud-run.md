@@ -40,8 +40,8 @@ Neon URLs, generated keys, reviewed legal-document URLs, and the temporary
 Cloud Run origin:
 
 ```bash
-git clone https://github.com/Shine0078/starter.git
-cd starter
+git clone https://github.com/Shine0078/finverse.git
+cd finverse
 cp infra/cloudrun.env.example ~/finverse-cloudrun.env.yaml
 nano ~/finverse-cloudrun.env.yaml
 bash infra/scripts/deploy-cloud-run.sh ~/finverse-cloudrun.env.yaml
