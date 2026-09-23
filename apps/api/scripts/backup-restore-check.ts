@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   const owner = new Pool({ connectionString: source });
   const restoredUrl = new URL(source); restoredUrl.pathname = '/finverse_restore_test';
   const restored = new Pool({ connectionString: restoredUrl.toString() });
-  const environment = { ...process.env, Path: utilities + delimiter + age + delimiter + (process.env.Path ?? process.env.PATH ?? '') };
+  const environment: NodeJS.ProcessEnv = { ...process.env, Path: utilities + delimiter + age + delimiter + (process.env.Path ?? process.env.PATH ?? '') };
   delete environment.PATH;
   function command(binary: string, args: string[]): string {
     const result = spawnSync(binary, args, { env: environment, encoding: 'utf8', timeout: 120000, windowsHide: true });
