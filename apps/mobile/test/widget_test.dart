@@ -192,7 +192,7 @@ void main() {
   testWidgets('help centre explains connectivity and keeps diagnostics safe',
       (tester) async {
     final api = clientWith(MockClient((request) async =>
-        request.url.path == '/healthz'
+        request.url.path == '/api/readiness'
             ? http.Response('{"status":"ok"}', 200)
             : http.Response('{}', 404)));
 

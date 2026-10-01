@@ -109,11 +109,11 @@ String dateOnly(DateTime value) {
 /// connection is accepted and then nothing ever comes back.
 const Duration kRequestTimeout = Duration(seconds: 20);
 
-/// A public, credential-free readiness probe for the API edge.
-///
-/// The API deliberately exposes `/healthz` outside the `/api` prefix so a
-/// reverse proxy and a phone can distinguish an unreachable host from an
-/// authenticated session problem without sending financial data.
+  /// A public, credential-free readiness probe for the API edge.
+  ///
+  /// Prefers `/api/readiness` because some edges (notably Cloud Run) intercept
+  /// the bare `/healthz` path before it reaches the app. `/healthz` remains the
+  /// local Docker and plain-host probe and is tried as a fallback.
 class ApiConnectionCheck {
   const ApiConnectionCheck({
     required this.healthy,
@@ -311,42 +311,53 @@ class ApiClient implements BackgroundSyncClient {
   /// materially different from a timeout, and the support UI explains both.
   Future<ApiConnectionCheck> checkConnection() async {
     final checkedAt = DateTime.now();
-    try {
-      final response = await _http
-          .get(Uri.parse('$baseUrl/healthz'))
-          .timeout(const Duration(seconds: 8));
-      final healthy = response.statusCode >= 200 && response.statusCode < 300;
-      final detail = response.statusCode == 503
-          ? 'The API is reachable, but its database is not ready.'
-          : !healthy &&
-                  !kIsWeb &&
-                  defaultTargetPlatform == TargetPlatform.iOS &&
-                  usesLoopbackOrigin
-              ? connectionFailureMessage
-              : healthy
-                  ? 'The API is online.'
-                  : 'The API responded with HTTP ${response.statusCode}.';
-      return ApiConnectionCheck(
-        healthy: healthy,
-        statusCode: response.statusCode,
-        detail: detail,
-        checkedAt: checkedAt,
-      );
-    } on TimeoutException {
-      return ApiConnectionCheck(
-        healthy: false,
-        statusCode: null,
-        detail: 'The API did not respond within 8 seconds.',
-        checkedAt: checkedAt,
-      );
-    } on http.ClientException {
-      return ApiConnectionCheck(
-        healthy: false,
-        statusCode: null,
-        detail: 'The API host could not be reached from this device.',
-        checkedAt: checkedAt,
-      );
-    } catch (_) {
+    // Cloud Run's edge returns a Google HTML 404 for exact `/healthz` and never
+    // forwards it; `/api/readiness` always reaches the app. Try both so local
+    // Docker (which documents `/healthz`) and Cloud Run both report correctly.
+    const paths = ['/api/readiness', '/healthz'];
+    http.Response? response;
+    Object? failure;
+    for (final path in paths) {
+      try {
+        final candidate = await _http
+            .get(Uri.parse('$baseUrl$path'))
+            .timeout(const Duration(seconds: 8));
+        // A definitive app answer (2xx or 5xx) wins; only keep looking on a
+        // proxy-level 404 that never reached FINVERSE.
+        if (candidate.statusCode != 404) {
+          response = candidate;
+          break;
+        }
+        response = candidate;
+      } on TimeoutException {
+        failure = TimeoutException('timeout');
+        break;
+      } on http.ClientException catch (error) {
+        failure = error;
+        break;
+      } catch (error) {
+        failure = error;
+        break;
+      }
+    }
+
+    if (response == null) {
+      if (failure is TimeoutException) {
+        return ApiConnectionCheck(
+          healthy: false,
+          statusCode: null,
+          detail: 'The API did not respond within 8 seconds.',
+          checkedAt: checkedAt,
+        );
+      }
+      if (failure is http.ClientException) {
+        return ApiConnectionCheck(
+          healthy: false,
+          statusCode: null,
+          detail: 'The API host could not be reached from this device.',
+          checkedAt: checkedAt,
+        );
+      }
       return ApiConnectionCheck(
         healthy: false,
         statusCode: null,
@@ -354,6 +365,24 @@ class ApiClient implements BackgroundSyncClient {
         checkedAt: checkedAt,
       );
     }
+
+    final healthy = response.statusCode >= 200 && response.statusCode < 300;
+    final detail = response.statusCode == 503
+        ? 'The API is reachable, but its database is not ready.'
+        : !healthy &&
+                !kIsWeb &&
+                defaultTargetPlatform == TargetPlatform.iOS &&
+                usesLoopbackOrigin
+            ? connectionFailureMessage
+            : healthy
+                ? 'The API is online.'
+                : 'The API responded with HTTP ${response.statusCode}.';
+    return ApiConnectionCheck(
+      healthy: healthy,
+      statusCode: response.statusCode,
+      detail: detail,
+      checkedAt: checkedAt,
+    );
   }
 
   bool _accessTokenExpired(String token) {
