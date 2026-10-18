@@ -50,7 +50,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   # Directly declared because session-store tests install the package's
   # in-memory platform and inject controlled keystore failures.
   flutter_secure_storage_platform_interface: ^2.0.3
